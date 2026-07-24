@@ -168,7 +168,7 @@ document.getElementById('overlay').addEventListener('click',(e)=>{ if(e.target.i
 /* ============================================================
    PROFILE / GATE
 ============================================================ */
-async function initGate(){
+async function initGate(auto=true){
   PROFILES = (await sGet('profiles-list')) || [];
   const listEl = document.getElementById('profile-list');
   listEl.innerHTML = '';
@@ -179,9 +179,14 @@ async function initGate(){
     b.onclick = ()=> selectProfile(name);
     listEl.appendChild(b);
   });
-  const remembered = getDeviceProfile();
-  if(remembered && PROFILES.includes(remembered)){
-    selectProfile(remembered);
+  // "auto" מחובר רק בטעינה הראשונה של האתר - כדי לדלג ישר לפרופיל שכבר
+  // נבחר במכשיר הזה. כשחוזרים דרך "החלפת פרופיל" (auto=false) לא מדלגים,
+  // כדי שאפשר יהיה גם לבחור פרופיל אחר וגם להוסיף פרופיל חדש.
+  if(auto){
+    const remembered = getDeviceProfile();
+    if(remembered && PROFILES.includes(remembered)){
+      selectProfile(remembered);
+    }
   }
 }
 async function createProfile(){
@@ -209,7 +214,7 @@ async function selectProfile(name){
 function switchProfile(){
   document.getElementById('mainapp').style.display='none';
   document.getElementById('gate').style.display='flex';
-  initGate();
+  initGate(false);
 }
 
 async function ensureSettings(){
