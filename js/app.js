@@ -129,7 +129,8 @@ const BADGE_DEFS = [
 ============================================================ */
 let CURRENT_PROFILE = null;
 let CURRENT_TAB = 'dashboard';
-let MENU_DAY_OFFSET = 0; // 0..6 within current week
+let MENU_DAY_OFFSET = 0; // 0..6 within the selected week
+let MENU_WEEK_OFFSET = 0; // 0 = השבוע הנוכחי, 1 = שבוע הבא, 2 = עוד שבוע וכו' (גם שלילי = שבועות שעברו)
 let PROFILES = [];
 
 /* ============================================================
@@ -334,6 +335,12 @@ async function allOptionsFor(tier, slot){
 async function renderMenu(){
   const el = document.getElementById('tab-content');
   const settings = await ensureSettings();
+  const weekStart = addDays(getWeekStart(), MENU_WEEK_OFFSET*7);
+  const weekEnd = addDays(weekStart, 6);
+  const weekLabel = MENU_WEEK_OFFSET===0 ? 'השבוע הנוכחי'
+    : MENU_WEEK_OFFSET===1 ? 'השבוע הבא'
+    : MENU_WEEK_OFFSET===-1 ? 'השבוע שעבר'
+    : `${fmtDate(weekStart)} - ${fmtDate(weekEnd)}`;
   el.innerHTML = `
     <div class="card">
       <h3>בחירת תפריט קלורי</h3>
@@ -341,10 +348,20 @@ async function renderMenu(){
         ${TIERS.map(t=>`<button class="btn ${settings.tier===t?'':'secondary'}" onclick="setTier(${t})">${t} קלוריות</button>`).join('')}
       </div>
     </div>
+    <div class="card" style="padding:12px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <button class="link-btn" onclick="changeMenuWeek(-1)">‹ שבוע קודם</button>
+        <div style="text-align:center;">
+          <div style="font-weight:700;color:var(--primary-dark);">${weekLabel}</div>
+          <div class="muted" style="font-size:11px;">${fmtDate(weekStart)} - ${fmtDate(weekEnd)}</div>
+        </div>
+        <button class="link-btn" onclick="changeMenuWeek(1)">שבוע הבא ›</button>
+      </div>
+      ${MENU_WEEK_OFFSET!==0 ? `<div style="text-align:center;margin-top:8px;"><button class="link-btn" onclick="changeMenuWeek(0)">חזרה להשבוע הנוכחי</button></div>` : ''}
+    </div>
     <div class="daytabs" id="daytabs"></div>
     <div id="meal-list"></div>
   `;
-  const weekStart = getWeekStart();
   const daytabs = document.getElementById('daytabs');
   daytabs.innerHTML = '';
   for(let i=0;i<7;i++){
@@ -358,6 +375,11 @@ async function renderMenu(){
   await renderMealList();
 }
 
+function changeMenuWeek(delta){
+  MENU_WEEK_OFFSET = delta===0 ? 0 : MENU_WEEK_OFFSET + delta;
+  renderMenu();
+}
+
 async function setTier(tier){
   const s = await ensureSettings();
   s.tier = tier;
@@ -368,7 +390,7 @@ async function setTier(tier){
 async function renderMealList(){
   const settings = await ensureSettings();
   const tier = settings.tier;
-  const weekStart = getWeekStart();
+  const weekStart = addDays(getWeekStart(), MENU_WEEK_OFFSET*7);
   const date = addDays(weekStart, MENU_DAY_OFFSET);
   const dateStr = todayStr(date);
   let menu = (await sGet(`menu:${CURRENT_PROFILE}:${dateStr}`)) || {};
@@ -672,13 +694,20 @@ async function renderBadges(){
 /* ============================================================
    SHOPPING LIST
 ============================================================ */
+let SHOPPING_WEEK_OFFSET = 0;
+
 async function renderShopping(){
   const el = document.getElementById('tab-content');
-  el.innerHTML = '<div class="card muted">בונה רשימת קניות לשבוע...</div>';
+  el.innerHTML = '<div class="card muted">בונה רשימת קניות...</div>';
   const settings = await ensureSettings();
   const tier = settings.tier;
-  const weekStart = getWeekStart();
+  const weekStart = addDays(getWeekStart(), SHOPPING_WEEK_OFFSET*7);
+  const weekEnd = addDays(weekStart, 6);
   const weekId = todayStr(weekStart);
+  const weekLabel = SHOPPING_WEEK_OFFSET===0 ? 'השבוע הנוכחי'
+    : SHOPPING_WEEK_OFFSET===1 ? 'השבוע הבא'
+    : SHOPPING_WEEK_OFFSET===-1 ? 'השבוע שעבר'
+    : `${fmtDate(weekStart)} - ${fmtDate(weekEnd)}`;
   const tally = {};
   for(let i=0;i<7;i++){
     const date = addDays(weekStart,i);
@@ -694,17 +723,32 @@ async function renderShopping(){
   const checks = (await sGet(`shopping:${CURRENT_PROFILE}:${weekId}`)) || {};
   const items = Object.keys(tally).sort((a,b)=>a.localeCompare(b,'he'));
   el.innerHTML = `
+    <div class="card" style="padding:12px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <button class="link-btn" onclick="changeShoppingWeek(-1)">‹ שבוע קודם</button>
+        <div style="text-align:center;">
+          <div style="font-weight:700;color:var(--primary-dark);">${weekLabel}</div>
+          <div class="muted" style="font-size:11px;">${fmtDate(weekStart)} - ${fmtDate(weekEnd)}</div>
+        </div>
+        <button class="link-btn" onclick="changeShoppingWeek(1)">שבוע הבא ›</button>
+      </div>
+      ${SHOPPING_WEEK_OFFSET!==0 ? `<div style="text-align:center;margin-top:8px;"><button class="link-btn" onclick="changeShoppingWeek(0)">חזרה להשבוע הנוכחי</button></div>` : ''}
+    </div>
     <div class="card">
-      <h3>🛒 רשימת קניות - השבוע</h3>
-      <div class="muted" style="margin-bottom:8px;">מבוסס על התפריט שנבחר לכל ימות השבוע</div>
-      ${items.map(ing=>`
+      <h3>🛒 רשימת קניות</h3>
+      <div class="muted" style="margin-bottom:8px;">מבוסס על התפריט שנבחר לכל ימות השבוע הזה</div>
+      ${items.length ? items.map(ing=>`
         <div class="shop-item ${checks[ing]?'checked':''}" data-ing="${encodeURIComponent(ing)}">
           <input type="checkbox" ${checks[ing]?'checked':''} onchange="toggleShopItem('${weekId}','${encodeURIComponent(ing)}', this.checked)">
           <span>${ing}${tally[ing]>1?' (x'+tally[ing]+')':''}</span>
         </div>
-      `).join('')}
+      `).join('') : '<div class="muted">עדיין לא נבחר תפריט לשבוע הזה</div>'}
     </div>
   `;
+}
+function changeShoppingWeek(delta){
+  SHOPPING_WEEK_OFFSET = delta===0 ? 0 : SHOPPING_WEEK_OFFSET + delta;
+  renderShopping();
 }
 async function toggleShopItem(weekId, encIng, checked){
   const ing = decodeURIComponent(encIng);
@@ -731,6 +775,8 @@ window.logWeight = logWeight;
 window.updateHeight = updateHeight;
 window.toggleShopItem = toggleShopItem;
 window.closeSheet = closeSheet;
+window.changeMenuWeek = changeMenuWeek;
+window.changeShoppingWeek = changeShoppingWeek;
 
 /* ============================================================
    INIT
