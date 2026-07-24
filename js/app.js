@@ -622,6 +622,82 @@ async function allOptionsFor(tier, slot){
   return [...MEAL_DATA[tier][slot], ...custom];
 }
 
+/* ============================================================
+   העדפות אכילה - כל פרופיל בוחר אילו מרכיבים הוא/היא לא אוכל/ת,
+   ומנות שמכילות אותם לא מוצעות בתפריט. הבדיקה מתבססת על אותה
+   שכבת פירוק/נרמול שמות מרכיבים שמשמשת את רשימת הקניות.
+============================================================ */
+async function getExcludedIngredients(profile){
+  return (await sGet(`preferences:${profile}`)) || [];
+}
+async function setExcludedIngredients(profile, list){
+  await sSet(`preferences:${profile}`, list);
+}
+function optionExcluded(option, excludedSet){
+  if(!excludedSet.size) return false;
+  return option.ingredients.some(ing=>{
+    const p = parseIngredient(ing);
+    return excludedSet.has(p.name);
+  });
+}
+// מחזיר את האפשרויות המותרות לפי רשימת המרכיבים החסומים (excludedNames).
+// אם הסינון היה מוציא את כל האפשרויות, או שהאפשרות שכבר נבחרה (keepSelectedId)
+// לא נכללת בתוצאה המסוננת - הן נשמרות בכל זאת, כדי לא "לשבור" תצוגה קיימת.
+async function filteredOptionsFor(tier, slot, excludedNames, keepSelectedId){
+  const all = await allOptionsFor(tier, slot);
+  const excludedSet = new Set(excludedNames||[]);
+  let filtered = all.filter(o=>!optionExcluded(o, excludedSet));
+  if(!filtered.length) filtered = all;
+  if(keepSelectedId && !filtered.find(o=>o.id===keepSelectedId)){
+    const keep = all.find(o=>o.id===keepSelectedId);
+    if(keep) filtered = [keep, ...filtered];
+  }
+  return filtered;
+}
+// כל שמות המרכיבים המנורמלים שמופיעים אי-פעם ב-MEAL_DATA (לתצוגת רשימת הסימון בהעדפות)
+let _allIngredientNamesCache = null;
+function getAllIngredientCanonicalNames(){
+  if(_allIngredientNamesCache) return _allIngredientNamesCache;
+  const set = new Set();
+  for(const tier of TIERS){
+    for(const slot of SLOTS){
+      (MEAL_DATA[tier][slot.id]||[]).forEach(o=>{
+        o.ingredients.forEach(ing=>{
+          const p = parseIngredient(ing);
+          if(p.name) set.add(p.name);
+        });
+      });
+    }
+  }
+  _allIngredientNamesCache = Array.from(set).sort((a,b)=>a.localeCompare(b,'he'));
+  return _allIngredientNamesCache;
+}
+async function openPreferencesSheet(){
+  const excluded = new Set(await getExcludedIngredients(CURRENT_PROFILE));
+  const names = getAllIngredientCanonicalNames();
+  openSheet(`
+    <button class="sheet-close" onclick="closeSheet()">✕</button>
+    <h3>העדפות אכילה - ${CURRENT_PROFILE}</h3>
+    <div class="muted" style="margin-bottom:10px;">סמני מה שאת/ה לא אוכל/ת - מנות שמכילות את זה לא יוצעו יותר בתפריט (אבל עדיין אפשר לבחור בהן ידנית אם צריך).</div>
+    <div style="max-height:50vh;overflow:auto;">
+      ${names.map(n=>`
+        <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+          <input type="checkbox" value="${n}" ${excluded.has(n)?'checked':''}>
+          <span>${n}</span>
+        </label>
+      `).join('')}
+    </div>
+    <button class="btn block" style="margin-top:12px;" onclick="savePreferences()">שמירה</button>
+  `);
+}
+async function savePreferences(){
+  const checked = Array.from(document.querySelectorAll('#sheet input[type=checkbox]:checked')).map(el=>el.value);
+  await setExcludedIngredients(CURRENT_PROFILE, checked);
+  closeSheet();
+  showToast('ההעדפות נשמרו ✅');
+  renderMenu();
+}
+
 async function getSeparateDay(dateStr){
   return !!(await sGet(`separate-day:${dateStr}`));
 }
@@ -655,6 +731,7 @@ async function renderMenu(){
       <div class="btn-row">
         ${TIERS.map(t=>`<button class="btn ${settings.tier===t?'':'secondary'}" onclick="setTier(${t})">${t} קלוריות</button>`).join('')}
       </div>
+      <button class="link-btn" style="margin-top:10px;" onclick="openPreferencesSheet()">⚙️ העדפות אכילה (מה שאני לא אוכל/ת)</button>
     </div>
     <div class="card" style="padding:12px 16px;">
       <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -728,12 +805,19 @@ async function renderMealList(){
   const separate = await getSeparateDay(dateStr);
   const shared = await getSharedSelection(dateStr);
   const others = otherProfileNames();
+  const myExcluded = await getExcludedIngredients(CURRENT_PROFILE);
+  let sharedExcludedUnion = myExcluded;
+  if(others.length){
+    const otherExclSets = await Promise.all(others.map(p=>getExcludedIngredients(p)));
+    sharedExcludedUnion = [...new Set([myExcluded, ...otherExclSets].flat())];
+  }
   const listEl = document.getElementById('meal-list');
   listEl.innerHTML = '';
   for(const slot of SLOTS){
     const isShared = slot.shared && !separate && others.length>0;
-    const options = await allOptionsFor(tier, slot.id);
-    const selectedId = isShared ? (shared[slot.id] || options[0].id) : (personalMenu[slot.id] || options[0].id);
+    const allOpts = await allOptionsFor(tier, slot.id);
+    const selectedId = isShared ? (shared[slot.id] || allOpts[0].id) : (personalMenu[slot.id] || allOpts[0].id);
+    const options = await filteredOptionsFor(tier, slot.id, isShared ? sharedExcludedUnion : myExcluded, selectedId);
     const selected = options.find(o=>o.id===selectedId) || options[0];
     const row = document.createElement('div');
     row.className='meal-row';
@@ -1488,6 +1572,8 @@ window.toggleShopItem = toggleShopItem;
 window.closeSheet = closeSheet;
 window.changeMenuWeek = changeMenuWeek;
 window.toggleSeparateDay = toggleSeparateDay;
+window.openPreferencesSheet = openPreferencesSheet;
+window.savePreferences = savePreferences;
 window.setShoppingRangePreset = setShoppingRangePreset;
 window.updateShoppingRangeFromInputs = updateShoppingRangeFromInputs;
 window.onProfileClick = onProfileClick;
