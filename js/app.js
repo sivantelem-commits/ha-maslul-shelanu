@@ -1283,7 +1283,7 @@ const PLURAL_MAP = {
   'עגבניות':'עגבנייה', 'ביצי שליו':'ביצת שליו', 'צימוקים':'צימוקים',
 };
 // פריטים "בני מנייה" שגם ללא מספר מפורש נחשבים ליחידה אחת (למשל "עגבנייה פרוסה" = עגבנייה 1)
-const SINGLE_COUNTABLE = ['עגבנייה','מלפפון','בצל','לימון','פלפל','גזר','אבוקדו','תפוח עץ','תפוח אדמה','בטטה','חציל','ביצה'];
+const SINGLE_COUNTABLE = ['עגבנייה','מלפפון','בצל','לימון','פלפל','גזר','אבוקדו','תפוח עץ','תפוח אדמה','בטטה','חציל','ביצה','חסה','קישוא','ברוקולי','פרי עונה'];
 
 // יחידות שבפועל הן "מידות שימוש" מתוך מוצר קיים (שמן, תבלינים) ולא כמות שקונים
 // בחנות לפי הכף/כפית - אלה עוברים לרשימה הכללית (תזכורת "צריך" בלי סכימת כפיות)
@@ -1417,6 +1417,58 @@ function formatAmount(amount){
 }
 
 /* ============================================================
+   המרה ליחידות קנייה אמיתיות
+   הכמויות הגולמיות שנאספות הן ביחידות "צריכה/בישול" (כוס, פרוסה,
+   מספר שקדים בודדים) - אבל בחנות לא קונים כוסות אורז או שקד בודד.
+   הפונקציה הזו הופכת כמות+יחידה+שם לניסוח שאפשר לקחת איתו לסופר.
+============================================================ */
+// פריטים "בני מנייה" שבפועל נמכרים במשקל, לא ביחידות בודדות - עם משקל ממוצע ליחידה (גרם)
+const WEIGHT_ONLY_UNIT_ITEMS = {'שקד':1.2,'אגוז':4,'אגוזי מלך':4,'תמר':8,'זית':4,'צימוקים':1};
+// כוסות של דגנים/קטניות - ממירים למשקל כי כך קונים בפועל (גרם לכוס, יבש)
+const CUP_TO_GRAMS = {'אורז מלא':190,'אורז בסמטי':185,'אורז':185,'קינואה':170,'קינואה מבושלת':185,'שיבולת שועל':90,'אדממה':155};
+
+function kgOrGrams(grams){
+  grams = Math.ceil(grams/10)*10;
+  if(grams>=1000){
+    const kg = grams/1000;
+    return (Number.isInteger(kg)?kg:kg.toFixed(1)) + ' ק"ג';
+  }
+  return grams + ' גרם';
+}
+
+function toShoppingDisplay(name, unit, total){
+  // שקדים/אגוזים/תמרים/זיתים - כשיש כמות משמעותית, יותר שימושי לדעת כמה גרם לקנות
+  // מאשר לספור "44 שקדים" (כשמדובר בכמות קטנה, ספירה עדיין סבירה)
+  if(unit==='יחידה' && WEIGHT_ONLY_UNIT_ITEMS[name] && total>=10){
+    return `${name} — כ-${kgOrGrams(total*WEIGHT_ONLY_UNIT_ITEMS[name])}`;
+  }
+  // כוסות דגנים/קטניות - המרה למשקל
+  if(unit==='כוס' && CUP_TO_GRAMS[name]){
+    return `${name} — כ-${kgOrGrams(total*CUP_TO_GRAMS[name])}`;
+  }
+  // כוסות חלב/משקה צמחי - המרה למ"ל/ליטר
+  if(unit==='כוס' && (name.includes('חלב') || name.includes('משקה'))){
+    let ml = Math.ceil(total*240/10)*10;
+    const display = ml>=1000 ? (ml/1000).toFixed(1).replace(/\.0$/,'')+' ליטר' : ml+' מ"ל';
+    return `${name} — כ-${display}`;
+  }
+  // פרוסות לחם - המרה לכיכרות (כיכר טיפוסית ~20 פרוסות) - כך באמת קונים לחם
+  if(unit==='פרוסה' && name.includes('לחם')){
+    const slicesNeeded = Math.ceil(total);
+    const loaves = Math.ceil(slicesNeeded/20);
+    return `${name} — ${loaves} ${loaves===1?'כיכר':'כיכרות'} (מספיק לכ-${slicesNeeded} פרוסות)`;
+  }
+  // גרם - קריא יותר בק"ג כשהכמות גדולה (עדיין נשאר לפי משקל, כי כך קונים בשר/גבינה בחנות)
+  if(unit==='גרם' && total>=1000){
+    return `${name} — ${kgOrGrams(total)}`;
+  }
+  // ברירת מחדל - יחידות ספירה רגילות (ירקות, ביצים, גביעים, קוביות...)
+  const displayAmount = unit==='יחידה' ? Math.ceil(total) : total;
+  const label = unitLabel(unit, displayAmount);
+  return `${name} — ${formatAmount(displayAmount)} ${label}`;
+}
+
+/* ============================================================
    SHOPPING TAB - טווח תאריכים חופשי (לא בהכרח שבוע)
 ============================================================ */
 async function getShoppingRange(){
@@ -1534,10 +1586,7 @@ async function renderShopping(){
       <h3>🛒 רשימת קניות</h3>
       <div class="muted" style="margin-bottom:8px;">כמויות מאוחדות ומסוכמות לפי התפריט בטווח שנבחר</div>
       ${quantifiedItems.length ? quantifiedItems.map(q=>{
-        // פריטים "בני מנייה" (יחידה) מעוגלים כלפי מעלה - אי אפשר לקנות שמינית אבוקדו בחנות
-        const displayAmount = q.unit==='יחידה' ? Math.ceil(q.total) : q.total;
-        const label = unitLabel(q.unit, displayAmount);
-        return rowHtml(`${q.name} — ${formatAmount(displayAmount)} ${label}`, `${q.name}|${q.unit}`);
+        return rowHtml(toShoppingDisplay(q.name, q.unit, q.total), `${q.name}|${q.unit}`);
       }).join('') : ''}
       ${genericItems.length ? `<div class="muted" style="margin:12px 0 6px;font-size:12px;">פריטים נוספים (כמות לפי הצורך)</div>` : ''}
       ${genericItems.map(name=>rowHtml(`${name}${generic[name]>1?' (נדרש '+generic[name]+' פעמים)':''}`, `generic:${name}`)).join('')}
