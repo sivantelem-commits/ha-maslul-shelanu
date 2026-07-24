@@ -499,6 +499,7 @@ async function doSelectProfile(name){
   document.getElementById('header-date').textContent = new Date().toLocaleDateString('he-IL',{weekday:'long',day:'numeric',month:'long'});
   await ensureSettings();
   goTab('dashboard');
+  requestNotificationPermission();
   checkWaterReminder();
   setInterval(checkWaterReminder, 5*60*1000);
 }
@@ -506,6 +507,33 @@ function switchProfile(){
   document.getElementById('mainapp').style.display='none';
   document.getElementById('gate').style.display='flex';
   initGate(false);
+}
+
+/* ============================================================
+   התראות אמיתיות (Notification API)
+   שימו לב: זו התראת מערכת אמיתית (לא רק הודעה בתוך הצ'אט) שתופיע
+   גם אם האפליקציה ברקע - אבל היא עדיין תלויה בזה שהדפדפן/מכשיר
+   "מעיר" את ה-Service Worker מדי פעם. באנדרואיד/כרום זה עובד טוב
+   כשהאפליקציה מותקנת. ב-iPhone (Safari) יש תמיכה חלקית בלבד
+   (מ-iOS 16.4 ומעלה, ורק כשהאפליקציה הותקנה למסך הבית) - זו מגבלה
+   של אפל, לא של האפליקציה הזו.
+============================================================ */
+async function requestNotificationPermission(){
+  if(!('Notification' in window)) return;
+  if(Notification.permission === 'default'){
+    try{ await Notification.requestPermission(); }catch(e){ /* ignore */ }
+  }
+}
+async function sendNotification(title, body){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  try{
+    if('serviceWorker' in navigator){
+      const reg = await navigator.serviceWorker.ready;
+      reg.showNotification(title, {body, icon:'icon-192.png', badge:'icon-192.png'});
+    } else {
+      new Notification(title, {body, icon:'icon-192.png'});
+    }
+  }catch(e){ /* ignore - notification best-effort */ }
 }
 
 async function ensureSettings(){
@@ -550,6 +578,7 @@ async function renderDashboard(){
   const badges = (await sGet(`badges:${CURRENT_PROFILE}`)) || [];
   const streak = (await sGet(`water-streak:${CURRENT_PROFILE}`)) || {count:0};
   const challenge = await getWeeklyChallengeStatus();
+  const monthly = await getMonthlySummary();
 
   const ringR = 52, circumference = 2*Math.PI*ringR;
   const dash = circumference * pct/100;
@@ -580,6 +609,15 @@ async function renderDashboard(){
     </div>
 
     <div class="card">
+      <h3>📊 סיכום ${monthly.monthName}</h3>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="v">${monthly.avgWater? (monthly.avgWater/1000).toFixed(2)+' ל׳':'—'}</div><div class="l">ממוצע מים יומי</div></div>
+        <div class="stat-box"><div class="v">${monthly.exerciseMinutes}</div><div class="l">דקות פעילות</div></div>
+        <div class="stat-box"><div class="v">${monthly.weightChange!==null ? (monthly.weightChange<=0?'':'+')+monthly.weightChange.toFixed(1)+' ק"ג' : '—'}</div><div class="l">שינוי במשקל</div></div>
+      </div>
+    </div>
+
+    <div class="card">
       <h3>🏅 תגים אחרונים</h3>
       ${badges.length ? `<div class="btn-row">${badges.slice(-3).reverse().map(b=>{const d=BADGE_DEFS.find(x=>x.id===b.id);return `<span class="pill">${d?d.ic:'🏅'} ${d?d.label:b.id}</span>`;}).join('')}</div>` : '<div class="muted">עדיין אין תגים - קדימה!</div>'}
     </div>
@@ -592,6 +630,29 @@ async function renderDashboard(){
       </div>
     </div>
   `;
+}
+
+async function getMonthlySummary(){
+  const now = new Date();
+  const year = now.getFullYear(), month = now.getMonth();
+  const daysSoFar = now.getDate();
+  let waterSum = 0, waterDaysWithData = 0, exerciseMinutes = 0;
+  for(let d=1; d<=daysSoFar; d++){
+    const dateStr = todayStr(new Date(year, month, d));
+    const w = await sGet(`water:${CURRENT_PROFILE}:${dateStr}`);
+    if(w && w.total>0){ waterSum += w.total; waterDaysWithData++; }
+    const ex = await sGet(`exercise:${CURRENT_PROFILE}:${dateStr}`);
+    if(ex && ex.length) exerciseMinutes += ex.reduce((s,e)=>s+e.minutes,0);
+  }
+  const avgWater = waterDaysWithData ? waterSum/waterDaysWithData : 0;
+  const weightLog = (await sGet(`weight-log:${CURRENT_PROFILE}`)) || [];
+  const monthEntries = weightLog.filter(e=>{
+    const d = new Date(e.date+'T00:00:00');
+    return d.getFullYear()===year && d.getMonth()===month;
+  });
+  const weightChange = monthEntries.length>=2 ? (monthEntries[monthEntries.length-1].weight - monthEntries[0].weight) : null;
+  const monthNames = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  return {avgWater, exerciseMinutes, weightChange, monthName: monthNames[month]};
 }
 
 async function getWeeklyChallengeStatus(){
@@ -957,8 +1018,12 @@ async function checkWaterReminder(){
   const water = await sGet(`water:${CURRENT_PROFILE}:${today}`);
   if(water && water.lastDrink){
     const mins = Math.floor((Date.now()-water.lastDrink)/60000);
-    if(mins>=60 && mins<65 && CURRENT_TAB!=='water'){
-      showToast('⏰ עברה שעה מאז השתייה האחרונה - כדאי לשתות מים!');
+    if(mins>=60 && mins<65){
+      if(document.hidden){
+        sendNotification('💧 זמן לשתות מים', 'עברה שעה מאז השתייה האחרונה שלך');
+      } else if(CURRENT_TAB!=='water'){
+        showToast('⏰ עברה שעה מאז השתייה האחרונה - כדאי לשתות מים!');
+      }
     }
   }
   if(CURRENT_TAB==='water') renderWater();
@@ -1078,6 +1143,13 @@ async function renderWeight(){
     else if(bmi<30) bmiCat='עודף משקל';
     else bmiCat='השמנה';
   }
+  const goalWeight = settings.goalWeight || null;
+  let remainingText = '—';
+  if(goalWeight && latest){
+    const diff = latest.weight - goalWeight;
+    if(Math.abs(diff) < 0.1) remainingText = '🎉 הגעת ליעד!';
+    else remainingText = (diff>0 ? 'עוד ' : 'עוד ') + Math.abs(diff).toFixed(1) + ' ק"ג ' + (diff>0?'לרדת':'לעלות');
+  }
   el.innerHTML = `
     <div class="card">
       <h3>⚖️ הוספת שקילה</h3>
@@ -1090,14 +1162,19 @@ async function renderWeight(){
         <label>גובה (ס״מ) — לחישוב BMI</label>
         <input id="height-input" type="number" value="${settings.height}" onchange="updateHeight(this.value)">
       </div>
+      <div class="field">
+        <label>משקל יעד (ק״ג)</label>
+        <input id="goal-weight-input" type="number" step="0.1" value="${goalWeight||''}" placeholder="לא הוגדר" onchange="updateGoalWeight(this.value)">
+      </div>
     </div>
     <div class="card">
       <h3>מגמת משקל</h3>
-      ${log.length>=2 ? drawWeightChart(log) : '<div class="muted">נדרשות לפחות 2 שקילות כדי להציג גרף</div>'}
+      ${log.length>=2 ? drawWeightChart(log, goalWeight) : '<div class="muted">נדרשות לפחות 2 שקילות כדי להציג גרף</div>'}
     </div>
     <div class="stat-grid">
       <div class="stat-box"><div class="v">${latest?latest.weight+' ק"ג':'—'}</div><div class="l">משקל אחרון</div></div>
       <div class="stat-box"><div class="v">${bmi?bmi.toFixed(1):'—'}</div><div class="l">BMI (${bmiCat})</div></div>
+      <div class="stat-box"><div class="v" style="font-size:15px;">${remainingText}</div><div class="l">ליעד (${goalWeight?goalWeight+' ק"ג':'לא הוגדר'})</div></div>
     </div>
     <div class="card">
       <h3>היסטוריה</h3>
@@ -1114,10 +1191,18 @@ async function renderWeight(){
     </div>
   `;
 }
-function drawWeightChart(log){
+async function updateGoalWeight(v){
+  const s = await ensureSettings();
+  const num = Number(v);
+  s.goalWeight = num>0 ? num : null;
+  await sSet(`settings:${CURRENT_PROFILE}`, s);
+  renderWeight();
+}
+function drawWeightChart(log, goalWeight){
   const w=280,h=130,pad=24;
   const weights = log.map(e=>e.weight);
-  const min = Math.min(...weights), max = Math.max(...weights);
+  let min = Math.min(...weights), max = Math.max(...weights);
+  if(goalWeight){ min = Math.min(min, goalWeight); max = Math.max(max, goalWeight); }
   const range = (max-min)||1;
   const stepX = (w-2*pad)/(log.length-1);
   const pts = log.map((e,i)=>{
@@ -1127,7 +1212,14 @@ function drawWeightChart(log){
   });
   const path = pts.map((p,i)=> (i===0?'M':'L')+p.x.toFixed(1)+','+p.y.toFixed(1)).join(' ');
   const dots = pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="4" fill="var(--primary)"><title>${p.date}: ${p.val} ק"ג</title></circle>`).join('');
+  let goalLine = '';
+  if(goalWeight){
+    const gy = h-pad - ((goalWeight-min)/range)*(h-2*pad);
+    goalLine = `<line x1="${pad}" y1="${gy.toFixed(1)}" x2="${w-pad}" y2="${gy.toFixed(1)}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="${w-pad}" y="${(gy-4).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--accent)">יעד ${goalWeight}</text>`;
+  }
   return `<svg class="weight-chart" viewBox="0 0 ${w} ${h}">
+    ${goalLine}
     <path d="${path}" fill="none" stroke="var(--primary)" stroke-width="2.5"/>
     ${dots}
   </svg>`;
@@ -1555,15 +1647,23 @@ async function renderShopping(){
   });
 
   const checks = (await sGet(`shopping-checks:${rangeKey}`)) || {};
+  const pantry = await getPantryStaples();
+  const pantrySet = new Set(pantry);
   const quantifiedItems = Object.values(quantified).sort((a,b)=>a.name.localeCompare(b.name,'he'));
   const genericItems = Object.keys(generic).sort((a,b)=>a.localeCompare(b,'he'));
 
-  function rowHtml(displayText, itemKey){
+  const quantifiedToBuy = quantifiedItems.filter(q=>!pantrySet.has(`${q.name}|${q.unit}`));
+  const quantifiedInPantry = quantifiedItems.filter(q=>pantrySet.has(`${q.name}|${q.unit}`));
+  const genericToBuy = genericItems.filter(n=>!pantrySet.has(`generic:${n}`));
+  const genericInPantry = genericItems.filter(n=>pantrySet.has(`generic:${n}`));
+
+  function rowHtml(displayText, itemKey, inPantry){
     const enc = encodeURIComponent(itemKey);
     return `
-      <div class="shop-item ${checks[itemKey]?'checked':''}" data-ing="${enc}">
+      <div class="shop-item ${checks[itemKey]?'checked':''}" data-ing="${enc}" style="${inPantry?'opacity:.6;':''}">
         <input type="checkbox" ${checks[itemKey]?'checked':''} onchange="toggleShopItem('${rangeKey}','${enc}', this.checked)">
-        <span>${displayText}</span>
+        <span style="flex:1;">${displayText}</span>
+        <button class="link-btn" style="font-size:11px;white-space:nowrap;" onclick="${inPantry?'removeFromPantry':'addToPantry'}('${enc}')">${inPantry?'החזרה לרשימה':'🏠 יש בבית'}</button>
       </div>`;
   }
 
@@ -1585,14 +1685,38 @@ async function renderShopping(){
     <div class="card">
       <h3>🛒 רשימת קניות</h3>
       <div class="muted" style="margin-bottom:8px;">כמויות מאוחדות ומסוכמות לפי התפריט בטווח שנבחר</div>
-      ${quantifiedItems.length ? quantifiedItems.map(q=>{
-        return rowHtml(toShoppingDisplay(q.name, q.unit, q.total), `${q.name}|${q.unit}`);
-      }).join('') : ''}
-      ${genericItems.length ? `<div class="muted" style="margin:12px 0 6px;font-size:12px;">פריטים נוספים (כמות לפי הצורך)</div>` : ''}
-      ${genericItems.map(name=>rowHtml(`${name}${generic[name]>1?' (נדרש '+generic[name]+' פעמים)':''}`, `generic:${name}`)).join('')}
-      ${(!quantifiedItems.length && !genericItems.length) ? '<div class="muted">עדיין לא נבחר תפריט לטווח התאריכים הזה</div>' : ''}
+      ${quantifiedToBuy.map(q=>rowHtml(toShoppingDisplay(q.name, q.unit, q.total), `${q.name}|${q.unit}`, false)).join('')}
+      ${genericToBuy.length ? `<div class="muted" style="margin:12px 0 6px;font-size:12px;">פריטים נוספים (כמות לפי הצורך)</div>` : ''}
+      ${genericToBuy.map(name=>rowHtml(`${name}${generic[name]>1?' (נדרש '+generic[name]+' פעמים)':''}`, `generic:${name}`, false)).join('')}
+      ${(!quantifiedToBuy.length && !genericToBuy.length) ? '<div class="muted">אין מה לקנות - הכל כבר יש בבית, או שלא נבחר תפריט 🎉</div>' : ''}
     </div>
+    ${(quantifiedInPantry.length || genericInPantry.length) ? `
+    <div class="card">
+      <h3>🏠 כבר יש לנו בבית</h3>
+      <div class="muted" style="margin-bottom:8px;">לא נכללים ברשימה למעלה - לחצו "החזרה לרשימה" אם נגמר</div>
+      ${quantifiedInPantry.map(q=>rowHtml(toShoppingDisplay(q.name, q.unit, q.total), `${q.name}|${q.unit}`, true)).join('')}
+      ${genericInPantry.map(name=>rowHtml(name, `generic:${name}`, true)).join('')}
+    </div>` : ''}
   `;
+}
+async function getPantryStaples(){
+  return (await sGet('pantry-staples')) || [];
+}
+async function addToPantry(encKey){
+  const itemKey = decodeURIComponent(encKey);
+  const list = await getPantryStaples();
+  if(!list.includes(itemKey)) list.push(itemKey);
+  await sSet('pantry-staples', list);
+  showToast('סומן כ"יש בבית" 🏠');
+  renderShopping();
+}
+async function removeFromPantry(encKey){
+  const itemKey = decodeURIComponent(encKey);
+  const list = await getPantryStaples();
+  const idx = list.indexOf(itemKey);
+  if(idx>-1) list.splice(idx,1);
+  await sSet('pantry-staples', list);
+  renderShopping();
 }
 async function toggleShopItem(rangeKey, encIng, checked){
   const itemKey = decodeURIComponent(encIng);
@@ -1617,6 +1741,9 @@ window.addWater = addWater;
 window.addCustomWater = addCustomWater;
 window.logWeight = logWeight;
 window.updateHeight = updateHeight;
+window.updateGoalWeight = updateGoalWeight;
+window.addToPantry = addToPantry;
+window.removeFromPantry = removeFromPantry;
 window.toggleShopItem = toggleShopItem;
 window.closeSheet = closeSheet;
 window.changeMenuWeek = changeMenuWeek;
