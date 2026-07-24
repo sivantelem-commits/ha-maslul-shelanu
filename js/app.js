@@ -6,12 +6,12 @@ import { sGet, sSet, getDeviceProfile, setDeviceProfile } from './storage.js';
 const DAY_NAMES = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 const TIERS = [1200,1500,1800];
 const SLOTS = [
-  {id:'breakfast', name:'ארוחת בוקר', icon:'☀️'},
-  {id:'snack1', name:'ביניים - בוקר', icon:'🍎'},
-  {id:'lunch', name:'ארוחת צהריים', icon:'🍽️'},
-  {id:'snack2', name:'ביניים - אחה"צ', icon:'🥜'},
-  {id:'dinner', name:'ארוחת ערב', icon:'🌙'},
-  {id:'snack3', name:'לפני השינה', icon:'⭐'}
+  {id:'breakfast', name:'ארוחת בוקר', icon:'☀️', shared:false},
+  {id:'snack1', name:'ביניים - בוקר', icon:'🍎', shared:false},
+  {id:'lunch', name:'ארוחת צהריים', icon:'🍽️', shared:true},
+  {id:'snack2', name:'ביניים - אחה"צ', icon:'🥜', shared:false},
+  {id:'dinner', name:'ארוחת ערב', icon:'🌙', shared:true},
+  {id:'snack3', name:'לפני השינה', icon:'⭐', shared:false}
 ];
 
 const MEAL_DATA = {
@@ -622,6 +622,24 @@ async function allOptionsFor(tier, slot){
   return [...MEAL_DATA[tier][slot], ...custom];
 }
 
+async function getSeparateDay(dateStr){
+  return !!(await sGet(`separate-day:${dateStr}`));
+}
+async function setSeparateDayFlag(dateStr, value){
+  await sSet(`separate-day:${dateStr}`, value);
+}
+async function getSharedSelection(dateStr){
+  return (await sGet(`menu-shared:${dateStr}`)) || {};
+}
+async function setSharedSelection(dateStr, slotId, optionId){
+  const shared = await getSharedSelection(dateStr);
+  shared[slotId] = optionId;
+  await sSet(`menu-shared:${dateStr}`, shared);
+}
+function otherProfileNames(){
+  return PROFILES.filter(p=>p!==CURRENT_PROFILE);
+}
+
 async function renderMenu(){
   const el = document.getElementById('tab-content');
   const settings = await ensureSettings();
@@ -650,6 +668,7 @@ async function renderMenu(){
       ${MENU_WEEK_OFFSET!==0 ? `<div style="text-align:center;margin-top:8px;"><button class="link-btn" onclick="changeMenuWeek(0)">חזרה להשבוע הנוכחי</button></div>` : ''}
     </div>
     <div class="daytabs" id="daytabs"></div>
+    <div id="separate-day-toggle"></div>
     <div id="meal-list"></div>
   `;
   const daytabs = document.getElementById('daytabs');
@@ -662,6 +681,28 @@ async function renderMenu(){
     b.onclick = ()=>{ MENU_DAY_OFFSET=i; renderMenu(); };
     daytabs.appendChild(b);
   }
+  await renderSeparateDayToggle();
+  await renderMealList();
+}
+
+async function renderSeparateDayToggle(){
+  const others = otherProfileNames();
+  const toggleEl = document.getElementById('separate-day-toggle');
+  if(!others.length){ toggleEl.innerHTML=''; return; } // אין עוד פרופילים - אין מה לשתף
+  const weekStart = addDays(getWeekStart(), MENU_WEEK_OFFSET*7);
+  const dateStr = todayStr(addDays(weekStart, MENU_DAY_OFFSET));
+  const separate = await getSeparateDay(dateStr);
+  toggleEl.innerHTML = `
+    <div class="card" style="padding:10px 16px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:13px;">${separate ? '🍽️ היום כל אחת אוכלת בנפרד' : `🔗 צהריים וערב משותפים עם ${others.join(', ')}`}</span>
+      <button class="btn secondary" style="font-size:12px;padding:8px 12px;" onclick="toggleSeparateDay('${dateStr}')">${separate ? 'החזרת שיתוף' : 'אכילה בנפרד היום'}</button>
+    </div>
+  `;
+}
+async function toggleSeparateDay(dateStr){
+  const current = await getSeparateDay(dateStr);
+  await setSeparateDayFlag(dateStr, !current);
+  await renderSeparateDayToggle();
   await renderMealList();
 }
 
@@ -683,17 +724,21 @@ async function renderMealList(){
   const weekStart = addDays(getWeekStart(), MENU_WEEK_OFFSET*7);
   const date = addDays(weekStart, MENU_DAY_OFFSET);
   const dateStr = todayStr(date);
-  let menu = (await sGet(`menu:${CURRENT_PROFILE}:${dateStr}`)) || {};
+  let personalMenu = (await sGet(`menu:${CURRENT_PROFILE}:${dateStr}`)) || {};
+  const separate = await getSeparateDay(dateStr);
+  const shared = await getSharedSelection(dateStr);
+  const others = otherProfileNames();
   const listEl = document.getElementById('meal-list');
   listEl.innerHTML = '';
   for(const slot of SLOTS){
+    const isShared = slot.shared && !separate && others.length>0;
     const options = await allOptionsFor(tier, slot.id);
-    const selectedId = menu[slot.id] || options[0].id;
+    const selectedId = isShared ? (shared[slot.id] || options[0].id) : (personalMenu[slot.id] || options[0].id);
     const selected = options.find(o=>o.id===selectedId) || options[0];
     const row = document.createElement('div');
     row.className='meal-row';
     row.innerHTML = `
-      <div class="top"><span class="slot-name">${slot.icon} ${slot.name}</span><span class="cal">${selected.calories} קק"ל</span></div>
+      <div class="top"><span class="slot-name">${slot.icon} ${slot.name}${isShared?' <span class="pill" style="font-size:10px;padding:2px 8px;">🔗 משותף</span>':''}</span><span class="cal">${selected.calories} קק"ל</span></div>
       <div class="meal-name">${selected.name}</div>
       <div class="ingredients">${selected.ingredients.join(' · ')}</div>
       <select data-slot="${slot.id}">
@@ -705,8 +750,12 @@ async function renderMealList(){
       </div>
     `;
     row.querySelector('select').addEventListener('change', async (e)=>{
-      menu[slot.id] = e.target.value;
-      await sSet(`menu:${CURRENT_PROFILE}:${dateStr}`, menu);
+      if(isShared){
+        await setSharedSelection(dateStr, slot.id, e.target.value);
+      } else {
+        personalMenu[slot.id] = e.target.value;
+        await sSet(`menu:${CURRENT_PROFILE}:${dateStr}`, personalMenu);
+      }
       renderMealList();
     });
     listEl.appendChild(row);
@@ -1311,25 +1360,47 @@ async function updateShoppingRangeFromInputs(){
 async function renderShopping(){
   const el = document.getElementById('tab-content');
   el.innerHTML = '<div class="card muted">בונה רשימת קניות...</div>';
-  const settings = await ensureSettings();
-  const tier = settings.tier;
   const range = await getShoppingRange();
   const startDate = new Date(range.start+'T00:00:00');
   const endDate = new Date(range.end+'T00:00:00');
   const dayCount = Math.round((endDate-startDate)/(1000*60*60*24)) + 1;
   const rangeKey = `${range.start}_${range.end}`;
 
-  // איסוף כל המרכיבים הגולמיים לטווח הנבחר
+  const profiles = PROFILES.length ? PROFILES : [CURRENT_PROFILE];
+  const profileTiers = {};
+  for(const p of profiles){
+    const s = (await sGet(`settings:${p}`)) || {tier:1500};
+    profileTiers[p] = s.tier;
+  }
+
+  // איסוף כל המרכיבים הגולמיים לטווח הנבחר:
+  // - ארוחות משותפות (צהריים/ערב, כשלא סומן "בנפרד" לאותו יום): מנה אחת, אבל קונים
+  //   לפי המנה של כל אחת מבני הבית (כל אחת לפי רמת הקלוריות שלה)
+  // - ארוחות אישיות: כל אחת לפי הבחירה והרמה שלה
   const rawList = [];
   for(let i=0;i<dayCount;i++){
     const date = addDays(startDate,i);
     const dateStr = todayStr(date);
-    const menu = (await sGet(`menu:${CURRENT_PROFILE}:${dateStr}`)) || {};
+    const separate = await getSeparateDay(dateStr);
+    const shared = await getSharedSelection(dateStr);
     for(const slot of SLOTS){
-      const options = await allOptionsFor(tier, slot.id);
-      const selId = menu[slot.id] || options[0].id;
-      const opt = options.find(o=>o.id===selId) || options[0];
-      opt.ingredients.forEach(ing=> rawList.push(ing));
+      const isShared = slot.shared && !separate && profiles.length>1;
+      if(isShared){
+        for(const p of profiles){
+          const options = await allOptionsFor(profileTiers[p], slot.id);
+          const selId = shared[slot.id] || options[0].id;
+          const opt = options.find(o=>o.id===selId) || options[0];
+          opt.ingredients.forEach(ing=> rawList.push(ing));
+        }
+      } else {
+        for(const p of profiles){
+          const menu = (await sGet(`menu:${p}:${dateStr}`)) || {};
+          const options = await allOptionsFor(profileTiers[p], slot.id);
+          const selId = menu[slot.id] || options[0].id;
+          const opt = options.find(o=>o.id===selId) || options[0];
+          opt.ingredients.forEach(ing=> rawList.push(ing));
+        }
+      }
     }
   }
 
@@ -1347,7 +1418,7 @@ async function renderShopping(){
     }
   });
 
-  const checks = (await sGet(`shopping:${CURRENT_PROFILE}:${rangeKey}`)) || {};
+  const checks = (await sGet(`shopping-checks:${rangeKey}`)) || {};
   const quantifiedItems = Object.values(quantified).sort((a,b)=>a.name.localeCompare(b.name,'he'));
   const genericItems = Object.keys(generic).sort((a,b)=>a.localeCompare(b,'he'));
 
@@ -1392,9 +1463,9 @@ async function renderShopping(){
 }
 async function toggleShopItem(rangeKey, encIng, checked){
   const itemKey = decodeURIComponent(encIng);
-  const checks = (await sGet(`shopping:${CURRENT_PROFILE}:${rangeKey}`)) || {};
+  const checks = (await sGet(`shopping-checks:${rangeKey}`)) || {};
   checks[itemKey] = checked;
-  await sSet(`shopping:${CURRENT_PROFILE}:${rangeKey}`, checks);
+  await sSet(`shopping-checks:${rangeKey}`, checks);
   document.querySelector(`.shop-item[data-ing="${encIng}"]`).classList.toggle('checked', checked);
 }
 
@@ -1416,6 +1487,7 @@ window.updateHeight = updateHeight;
 window.toggleShopItem = toggleShopItem;
 window.closeSheet = closeSheet;
 window.changeMenuWeek = changeMenuWeek;
+window.toggleSeparateDay = toggleSeparateDay;
 window.setShoppingRangePreset = setShoppingRangePreset;
 window.updateShoppingRangeFromInputs = updateShoppingRangeFromInputs;
 window.onProfileClick = onProfileClick;
