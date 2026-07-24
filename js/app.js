@@ -527,7 +527,7 @@ document.getElementById('bottomnav').addEventListener('click', (e)=>{
 function goTab(tab){
   CURRENT_TAB = tab;
   document.querySelectorAll('#bottomnav button').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
-  const renderers = {dashboard:renderDashboard, menu:renderMenu, water:renderWater, weight:renderWeight, badges:renderBadges, shopping:renderShopping};
+  const renderers = {dashboard:renderDashboard, menu:renderMenu, water:renderWater, exercise:renderExercise, weight:renderWeight, badges:renderBadges, shopping:renderShopping};
   renderers[tab]();
 }
 
@@ -833,6 +833,103 @@ async function checkWaterReminder(){
 }
 
 /* ============================================================
+   EXERCISE
+============================================================ */
+const EXERCISE_TYPES = [
+  {id:'walk', name:'הליכה', icon:'🚶'},
+  {id:'run', name:'ריצה', icon:'🏃'},
+  {id:'swim', name:'שחייה', icon:'🏊'},
+  {id:'home', name:'פעילות בבית', icon:'🏋️'},
+  {id:'bike', name:'אופניים', icon:'🚴'},
+  {id:'other', name:'אחר', icon:'⭐'},
+];
+function exerciseTypeInfo(id){
+  return EXERCISE_TYPES.find(t=>t.id===id) || EXERCISE_TYPES[EXERCISE_TYPES.length-1];
+}
+async function renderExercise(){
+  const el = document.getElementById('tab-content');
+  const today = todayStr();
+  const entries = (await sGet(`exercise:${CURRENT_PROFILE}:${today}`)) || [];
+  const todayTotal = entries.reduce((sum,e)=>sum+e.minutes,0);
+
+  // סיכום שבועי לפי סוג פעילות
+  const weekStart = getWeekStart();
+  const weekTotals = {};
+  let weekTotalMinutes = 0;
+  for(let i=0;i<7;i++){
+    const d = addDays(weekStart,i);
+    const dateStr = todayStr(d);
+    const dayEntries = (dateStr===today) ? entries : ((await sGet(`exercise:${CURRENT_PROFILE}:${dateStr}`)) || []);
+    dayEntries.forEach(e=>{
+      weekTotals[e.type] = (weekTotals[e.type]||0)+e.minutes;
+      weekTotalMinutes += e.minutes;
+    });
+  }
+
+  el.innerHTML = `
+    <div class="card">
+      <h3>🏃 הוספת פעילות גופנית</h3>
+      <div class="field">
+        <label>סוג פעילות</label>
+        <select id="ex-type">
+          ${EXERCISE_TYPES.map(t=>`<option value="${t.id}">${t.icon} ${t.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>משך (דקות)</label>
+        <input id="ex-minutes" type="number" placeholder="30">
+      </div>
+      <button class="btn block" onclick="logExercise()">שמירה</button>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-box"><div class="v">${todayTotal}</div><div class="l">דקות היום</div></div>
+      <div class="stat-box"><div class="v">${weekTotalMinutes}</div><div class="l">דקות השבוע</div></div>
+    </div>
+
+    <div class="card">
+      <h3>פילוח השבוע לפי סוג</h3>
+      ${Object.keys(weekTotals).length ? Object.entries(weekTotals).map(([type,mins])=>{
+        const info = exerciseTypeInfo(type);
+        return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
+          <span>${info.icon} ${info.name}</span><span class="muted">${mins} דקות</span>
+        </div>`;
+      }).join('') : '<div class="muted">עדיין לא נרשמה פעילות השבוע</div>'}
+    </div>
+
+    <div class="card">
+      <h3>יומן היום</h3>
+      ${entries.length ? entries.slice().reverse().map((e,idx)=>{
+        const info = exerciseTypeInfo(e.type);
+        const realIdx = entries.length-1-idx;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+          <span>${info.icon} ${info.name} — ${e.minutes} דקות</span>
+          <button class="link-btn" onclick="deleteExercise(${realIdx})">מחיקה</button>
+        </div>`;
+      }).join('') : '<div class="muted">עדיין לא נרשמה פעילות היום</div>'}
+    </div>
+  `;
+}
+async function logExercise(){
+  const type = document.getElementById('ex-type').value;
+  const minutes = Number(document.getElementById('ex-minutes').value);
+  if(!minutes || minutes<=0){ showToast('נא להזין משך זמן תקין'); return; }
+  const today = todayStr();
+  const entries = (await sGet(`exercise:${CURRENT_PROFILE}:${today}`)) || [];
+  entries.push({type, minutes, time: Date.now()});
+  await sSet(`exercise:${CURRENT_PROFILE}:${today}`, entries);
+  showToast('הפעילות נשמרה 💪');
+  renderExercise();
+}
+async function deleteExercise(idx){
+  const today = todayStr();
+  const entries = (await sGet(`exercise:${CURRENT_PROFILE}:${today}`)) || [];
+  entries.splice(idx,1);
+  await sSet(`exercise:${CURRENT_PROFILE}:${today}`, entries);
+  renderExercise();
+}
+
+/* ============================================================
    WEIGHT
 ============================================================ */
 async function renderWeight(){
@@ -984,67 +1081,246 @@ async function renderBadges(){
 /* ============================================================
    SHOPPING LIST
 ============================================================ */
-let SHOPPING_WEEK_OFFSET = 0;
+/* ============================================================
+   SHOPPING LIST - PARSING & AGGREGATION
+   הרשימות הגולמיות ב-MEAL_DATA הן טקסט חופשי ("120 גרם חזה עוף",
+   "חצי אבוקדו", "2 ביצים"...). הפונקציות כאן מפרקות כל מחרוזת
+   לכמות+יחידה+שם, ומאחדות פריטים זהים (למשל "חזה עוף" ו"חזה עוף צלוי")
+   לשורה אחת עם כמות כוללת, במקום להציג "פריט (x7)".
+============================================================ */
+const FRACTION_WORDS = {'חצי':0.5,'רבע':0.25,'שליש':1/3,'שמינית':0.125,'שלושת רבעי':0.75};
+const NUMBER_WORDS = {'שתי':2,'שתיים':2,'שני':2,'שניים':2,'שלוש':3,'שלושה':3,'ארבע':4,'ארבעה':4,
+  'חמש':5,'חמישה':5,'שש':6,'שישה':6,'שבע':7,'שבעה':7,'שמונה':8,'תשע':9,'תשעה':9,'עשר':10,'עשרה':10,
+  'אחת':1,'אחד':1};
+// יחידות מוכרות (צורת רבים/יחיד -> שם יחידה מנורמל)
+const UNIT_WORDS = [
+  [/^גרם\s+/, 'גרם'],
+  [/^(כוסות|כוס)\s+/, 'כוס'],
+  [/^(כפות|כף)\s+/, 'כף'],
+  [/^(כפיות|כפית)\s+/, 'כפית'],
+  [/^(פרוסות|פרוסת|פרוסה)\s+/, 'פרוסה'],
+  [/^(קוביות|קובייה)\s+/, 'קובייה'],
+  [/^גביע(י)?\s+/, 'גביע'],
+];
+// שמות נפוצים ברבים -> יחיד, לצורך איחוד פריטים (רשימה חלקית לפי אוצר המילים באפליקציה)
+const PLURAL_MAP = {
+  'ביצים':'ביצה', 'שקדים':'שקד', 'זיתים':'זית', 'תמרים':'תמר', 'אגוזים':'אגוז',
+  'פריכיות':'פריכייה', 'קרקרים':'קרקר', 'קציצות':'קציצה', 'תפוחי אדמה':'תפוח אדמה',
+  'עגבניות':'עגבנייה', 'ביצי שליו':'ביצת שליו', 'תמרים':'תמר', 'צימוקים':'צימוקים',
+};
+// פריטים "בני מנייה" שגם ללא מספר מפורש נחשבים ליחידה אחת (למשל "עגבנייה פרוסה" = עגבנייה 1)
+const SINGLE_COUNTABLE = ['עגבנייה','מלפפון','בצל','לימון','פלפל','גזר','אבוקדו','תפוח עץ','תפוח אדמה','בטטה','חציל','ביצה'];
+
+const DESCRIPTOR_SUFFIXES = ['צלוי','צלויה','צלויים','צלויות','קשה','קשות','מבושל','מבושלת','מבושלים','מבושלות',
+  'טרי','טריים','טריות','חתוך','חתוכה','חתוכים','חתוכות','קצוץ','קצוצה','קצוצים','אפוי','אפויה','אפויים','אפויות',
+  'מטוגן','מטוגנת','מוקפץ','מוקפצים','גרוס','גרוסים','גרוסה','מרוסק','מרוסקת','פרוסה','מפוררת','טרופה','טרופות',
+  'מגורר','מגוררת','קלוף','קלופים'];
+function canonicalizeName(name){
+  let n = name.trim();
+  if(PLURAL_MAP[n]) n = PLURAL_MAP[n];
+  for(let pass=0; pass<2; pass++){
+    for(const suf of DESCRIPTOR_SUFFIXES){
+      const re = new RegExp('\\s+'+suf+'$');
+      if(re.test(n)){ n = n.replace(re, '').trim(); break; }
+    }
+  }
+  if(PLURAL_MAP[n]) n = PLURAL_MAP[n];
+  return n.trim();
+}
+
+// מפרק מחרוזת מרכיב חופשית לכמות + יחידה + שם מנורמל.
+// מחזיר {name, amount, unit} כאשר unit=null אומר "לא ניתן לכמת" (יוצג כרשימה רגילה בלי סכימה)
+function parseIngredient(raw){
+  let text = raw.trim().replace(/\(.*?\)/g, '').trim(); // הסרת הערות בסוגריים כמו "(כ-280 גרם בשר טחון)"
+
+  // 1. מספר רגיל בהתחלה: "120 גרם חזה עוף", "2 ביצים"
+  let m = text.match(/^(\d+(?:\.\d+)?)\s+(.*)$/);
+  let amount = null, rest = text;
+  if(m){
+    amount = parseFloat(m[1]);
+    rest = m[2];
+  } else {
+    // 2. מילת שבר בהתחלה: "חצי אבוקדו", "שלושת רבעי כוס..."
+    for(const [word, val] of Object.entries(FRACTION_WORDS)){
+      if(text.startsWith(word+' ')){
+        amount = val;
+        rest = text.slice(word.length+1);
+        break;
+      }
+    }
+    if(amount===null){
+      // 3. מילת מספר בהתחלה: "שני תפוחים"
+      for(const [word, val] of Object.entries(NUMBER_WORDS)){
+        if(text.startsWith(word+' ')){
+          amount = val;
+          rest = text.slice(word.length+1);
+          break;
+        }
+      }
+    }
+    if(amount===null){
+      // 4. מילת מספר/שבר בסוף: "פרי אחד", "ביצה קשה אחת"
+      for(const [word, val] of Object.entries(NUMBER_WORDS)){
+        if(text.endsWith(' '+word)){
+          amount = val;
+          rest = text.slice(0, text.length-word.length-1);
+          break;
+        }
+      }
+    }
+  }
+
+  // חילוץ יחידה מתוך "rest" (אם קיימת) - גם אם לא נמצא מספר מפורש קודם
+  // (למשל "פרוסת לחם מלא" / "כפית שמן זית" = יחידה בודדת אחת)
+  let unit = null;
+  for(const [re, u] of UNIT_WORDS){
+    if(re.test(rest)){
+      unit = u;
+      rest = rest.replace(re, '');
+      if(amount===null) amount = 1;
+      break;
+    }
+  }
+
+  rest = rest.trim();
+
+  if(amount!==null && unit){
+    return {name: canonicalizeName(rest), amount, unit};
+  }
+  if(amount!==null && !unit){
+    // מספר בלי יחידת מידה מפורשת - למשל "2 ביצים", "5 שקדים", "3 תמרים"
+    return {name: canonicalizeName(rest), amount, unit:'יחידה'};
+  }
+  // אין מספר בכלל - בדיקה אם זה פריט "בן מנייה" יחיד (עגבנייה פרוסה = עגבנייה אחת)
+  for(const noun of SINGLE_COUNTABLE){
+    if(rest.startsWith(noun)){
+      return {name: canonicalizeName(noun), amount:1, unit:'יחידה'};
+    }
+  }
+  // לא ניתן לכימות (ירקות מגוונים, רוטב עגבניות, תיבול...) - יוצג כפריט רגיל
+  return {name: canonicalizeName(text), amount:null, unit:null};
+}
+
+function formatAmount(amount){
+  // מציג 0.5/0.25/0.75 כשברים קריאים, ואחרת מעוגל לפי הצורך
+  const whole = Math.floor(amount);
+  const frac = amount - whole;
+  const fracMap = {0.5:'½', 0.25:'¼', 0.75:'¾', 0.34:'⅓', [1/3]:'⅓', 0.125:'⅛'};
+  for(const [f, sym] of Object.entries(fracMap)){
+    if(Math.abs(frac - f) < 0.02){
+      return (whole>0 ? whole+' ' : '') + sym;
+    }
+  }
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(1);
+}
+
+/* ============================================================
+   SHOPPING TAB - טווח תאריכים חופשי (לא בהכרח שבוע)
+============================================================ */
+async function getShoppingRange(){
+  const saved = await sGet(`shopping-range:${CURRENT_PROFILE}`);
+  if(saved) return saved;
+  const start = getWeekStart();
+  const end = addDays(start, 6);
+  return {start: todayStr(start), end: todayStr(end)};
+}
+async function setShoppingRangePreset(daysAhead, daysLength){
+  const start = addDays(getWeekStart(), daysAhead);
+  const end = addDays(start, daysLength-1);
+  const range = {start: todayStr(start), end: todayStr(end)};
+  await sSet(`shopping-range:${CURRENT_PROFILE}`, range);
+  renderShopping();
+}
+async function updateShoppingRangeFromInputs(){
+  const start = document.getElementById('shop-range-start').value;
+  const end = document.getElementById('shop-range-end').value;
+  if(!start || !end || start > end){ showToast('טווח תאריכים לא תקין'); return; }
+  await sSet(`shopping-range:${CURRENT_PROFILE}`, {start, end});
+  renderShopping();
+}
 
 async function renderShopping(){
   const el = document.getElementById('tab-content');
   el.innerHTML = '<div class="card muted">בונה רשימת קניות...</div>';
   const settings = await ensureSettings();
   const tier = settings.tier;
-  const weekStart = addDays(getWeekStart(), SHOPPING_WEEK_OFFSET*7);
-  const weekEnd = addDays(weekStart, 6);
-  const weekId = todayStr(weekStart);
-  const weekLabel = SHOPPING_WEEK_OFFSET===0 ? 'השבוע הנוכחי'
-    : SHOPPING_WEEK_OFFSET===1 ? 'השבוע הבא'
-    : SHOPPING_WEEK_OFFSET===-1 ? 'השבוע שעבר'
-    : `${fmtDate(weekStart)} - ${fmtDate(weekEnd)}`;
-  const tally = {};
-  for(let i=0;i<7;i++){
-    const date = addDays(weekStart,i);
+  const range = await getShoppingRange();
+  const startDate = new Date(range.start+'T00:00:00');
+  const endDate = new Date(range.end+'T00:00:00');
+  const dayCount = Math.round((endDate-startDate)/(1000*60*60*24)) + 1;
+  const rangeKey = `${range.start}_${range.end}`;
+
+  // איסוף כל המרכיבים הגולמיים לטווח הנבחר
+  const rawList = [];
+  for(let i=0;i<dayCount;i++){
+    const date = addDays(startDate,i);
     const dateStr = todayStr(date);
     const menu = (await sGet(`menu:${CURRENT_PROFILE}:${dateStr}`)) || {};
     for(const slot of SLOTS){
       const options = await allOptionsFor(tier, slot.id);
       const selId = menu[slot.id] || options[0].id;
       const opt = options.find(o=>o.id===selId) || options[0];
-      opt.ingredients.forEach(ing=>{ tally[ing] = (tally[ing]||0)+1; });
+      opt.ingredients.forEach(ing=> rawList.push(ing));
     }
   }
-  const checks = (await sGet(`shopping:${CURRENT_PROFILE}:${weekId}`)) || {};
-  const items = Object.keys(tally).sort((a,b)=>a.localeCompare(b,'he'));
+
+  // איחוד: פריטים מכומתים נצברים לפי (שם+יחידה), פריטים לא-מכומתים נספרים כמו קודם
+  const quantified = {}; // key: name|unit -> {name, unit, total}
+  const generic = {}; // name -> count
+  rawList.forEach(raw=>{
+    const p = parseIngredient(raw);
+    if(p.unit){
+      const key = p.name+'|'+p.unit;
+      if(!quantified[key]) quantified[key] = {name:p.name, unit:p.unit, total:0};
+      quantified[key].total += p.amount;
+    } else {
+      generic[p.name] = (generic[p.name]||0)+1;
+    }
+  });
+
+  const checks = (await sGet(`shopping:${CURRENT_PROFILE}:${rangeKey}`)) || {};
+  const quantifiedItems = Object.values(quantified).sort((a,b)=>a.name.localeCompare(b.name,'he'));
+  const genericItems = Object.keys(generic).sort((a,b)=>a.localeCompare(b,'he'));
+
+  function rowHtml(displayText, itemKey){
+    const enc = encodeURIComponent(itemKey);
+    return `
+      <div class="shop-item ${checks[itemKey]?'checked':''}" data-ing="${enc}">
+        <input type="checkbox" ${checks[itemKey]?'checked':''} onchange="toggleShopItem('${rangeKey}','${enc}', this.checked)">
+        <span>${displayText}</span>
+      </div>`;
+  }
+
   el.innerHTML = `
     <div class="card" style="padding:12px 16px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;">
-        <button class="link-btn" onclick="changeShoppingWeek(-1)">‹ שבוע קודם</button>
-        <div style="text-align:center;">
-          <div style="font-weight:700;color:var(--primary-dark);">${weekLabel}</div>
-          <div class="muted" style="font-size:11px;">${fmtDate(weekStart)} - ${fmtDate(weekEnd)}</div>
-        </div>
-        <button class="link-btn" onclick="changeShoppingWeek(1)">שבוע הבא ›</button>
+      <div style="font-weight:700;color:var(--primary-dark);margin-bottom:8px;">טווח תאריכים לרשימת הקניות</div>
+      <div class="btn-row" style="margin-bottom:10px;">
+        <button class="btn secondary" onclick="setShoppingRangePreset(0,7)">השבוע הזה</button>
+        <button class="btn secondary" onclick="setShoppingRangePreset(7,7)">השבוע הבא</button>
+        <button class="btn secondary" onclick="setShoppingRangePreset(0,14)">שבועיים מהיום</button>
       </div>
-      ${SHOPPING_WEEK_OFFSET!==0 ? `<div style="text-align:center;margin-top:8px;"><button class="link-btn" onclick="changeShoppingWeek(0)">חזרה להשבוע הנוכחי</button></div>` : ''}
+      <div class="btn-row">
+        <div class="field" style="flex:1;margin-bottom:0;"><label>מתאריך</label><input type="date" id="shop-range-start" value="${range.start}"></div>
+        <div class="field" style="flex:1;margin-bottom:0;"><label>עד תאריך</label><input type="date" id="shop-range-end" value="${range.end}"></div>
+      </div>
+      <button class="btn block" style="margin-top:10px;" onclick="updateShoppingRangeFromInputs()">עדכון טווח</button>
+      <div class="muted" style="margin-top:8px;text-align:center;">${fmtDate(startDate)} - ${fmtDate(endDate)} (${dayCount} ימים)</div>
     </div>
     <div class="card">
       <h3>🛒 רשימת קניות</h3>
-      <div class="muted" style="margin-bottom:8px;">מבוסס על התפריט שנבחר לכל ימות השבוע הזה</div>
-      ${items.length ? items.map(ing=>`
-        <div class="shop-item ${checks[ing]?'checked':''}" data-ing="${encodeURIComponent(ing)}">
-          <input type="checkbox" ${checks[ing]?'checked':''} onchange="toggleShopItem('${weekId}','${encodeURIComponent(ing)}', this.checked)">
-          <span>${ing}${tally[ing]>1?' (x'+tally[ing]+')':''}</span>
-        </div>
-      `).join('') : '<div class="muted">עדיין לא נבחר תפריט לשבוע הזה</div>'}
+      <div class="muted" style="margin-bottom:8px;">כמויות מאוחדות ומסוכמות לפי התפריט בטווח שנבחר</div>
+      ${quantifiedItems.length ? quantifiedItems.map(q=>rowHtml(`${q.name} — ${formatAmount(q.total)} ${q.unit}`, `${q.name}|${q.unit}`)).join('') : ''}
+      ${genericItems.length ? `<div class="muted" style="margin:12px 0 6px;font-size:12px;">פריטים נוספים (כמות לפי הצורך)</div>` : ''}
+      ${genericItems.map(name=>rowHtml(`${name}${generic[name]>1?' (נדרש '+generic[name]+' פעמים)':''}`, `generic:${name}`)).join('')}
+      ${(!quantifiedItems.length && !genericItems.length) ? '<div class="muted">עדיין לא נבחר תפריט לטווח התאריכים הזה</div>' : ''}
     </div>
   `;
 }
-function changeShoppingWeek(delta){
-  SHOPPING_WEEK_OFFSET = delta===0 ? 0 : SHOPPING_WEEK_OFFSET + delta;
-  renderShopping();
-}
-async function toggleShopItem(weekId, encIng, checked){
-  const ing = decodeURIComponent(encIng);
-  const checks = (await sGet(`shopping:${CURRENT_PROFILE}:${weekId}`)) || {};
-  checks[ing] = checked;
-  await sSet(`shopping:${CURRENT_PROFILE}:${weekId}`, checks);
+async function toggleShopItem(rangeKey, encIng, checked){
+  const itemKey = decodeURIComponent(encIng);
+  const checks = (await sGet(`shopping:${CURRENT_PROFILE}:${rangeKey}`)) || {};
+  checks[itemKey] = checked;
+  await sSet(`shopping:${CURRENT_PROFILE}:${rangeKey}`, checks);
   document.querySelector(`.shop-item[data-ing="${encIng}"]`).classList.toggle('checked', checked);
 }
 
@@ -1066,10 +1342,13 @@ window.updateHeight = updateHeight;
 window.toggleShopItem = toggleShopItem;
 window.closeSheet = closeSheet;
 window.changeMenuWeek = changeMenuWeek;
-window.changeShoppingWeek = changeShoppingWeek;
+window.setShoppingRangePreset = setShoppingRangePreset;
+window.updateShoppingRangeFromInputs = updateShoppingRangeFromInputs;
 window.onProfileClick = onProfileClick;
 window.submitPasswordCheck = submitPasswordCheck;
 window.submitNewPassword = submitNewPassword;
+window.logExercise = logExercise;
+window.deleteExercise = deleteExercise;
 
 /* ============================================================
    INIT
