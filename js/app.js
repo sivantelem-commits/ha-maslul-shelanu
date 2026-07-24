@@ -968,7 +968,16 @@ async function renderWeight(){
     </div>
     <div class="card">
       <h3>היסטוריה</h3>
-      ${log.length? log.slice().reverse().map(e=>`<div class="muted">${e.date} — ${e.weight} ק"ג</div>`).join('') : '<div class="muted">אין נתונים עדיין</div>'}
+      ${log.length? log.slice().reverse().map((e,idx)=>{
+        const realIdx = log.length-1-idx;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+          <span class="muted">${e.date} — ${e.weight} ק"ג</span>
+          <span>
+            <button class="link-btn" onclick="editWeightEntry(${realIdx})">עריכה</button>
+            <button class="link-btn" style="color:var(--danger);margin-right:10px;" onclick="deleteWeightEntry(${realIdx})">מחיקה</button>
+          </span>
+        </div>`;
+      }).join('') : '<div class="muted">אין נתונים עדיין</div>'}
     </div>
   `;
 }
@@ -998,6 +1007,38 @@ async function logWeight(){
   await sSet(`weight-log:${CURRENT_PROFILE}`, log);
   showToast('המשקל נשמר ✅');
   await checkBadges();
+  renderWeight();
+}
+async function editWeightEntry(idx){
+  const log = (await sGet(`weight-log:${CURRENT_PROFILE}`)) || [];
+  const entry = log[idx];
+  if(!entry) return;
+  openSheet(`
+    <button class="sheet-close" onclick="closeSheet()">✕</button>
+    <h3>עריכת שקילה</h3>
+    <div class="field"><label>תאריך</label><input id="edit-weight-date" type="date" value="${entry.date}"></div>
+    <div class="field"><label>משקל (ק״ג)</label><input id="edit-weight-value" type="number" step="0.1" value="${entry.weight}"></div>
+    <button class="btn block" onclick="saveWeightEdit(${idx})">שמירה</button>
+  `);
+}
+async function saveWeightEdit(idx){
+  const date = document.getElementById('edit-weight-date').value;
+  const weight = Number(document.getElementById('edit-weight-value').value);
+  if(!weight || weight<=0){ showToast('נא להזין משקל תקין'); return; }
+  const log = (await sGet(`weight-log:${CURRENT_PROFILE}`)) || [];
+  log[idx] = {date, weight};
+  log.sort((a,b)=> a.date.localeCompare(b.date));
+  await sSet(`weight-log:${CURRENT_PROFILE}`, log);
+  closeSheet();
+  showToast('העדכון נשמר ✅');
+  await checkBadges();
+  renderWeight();
+}
+async function deleteWeightEntry(idx){
+  const log = (await sGet(`weight-log:${CURRENT_PROFILE}`)) || [];
+  log.splice(idx,1);
+  await sSet(`weight-log:${CURRENT_PROFILE}`, log);
+  showToast('הרשומה נמחקה');
   renderWeight();
 }
 async function updateHeight(v){
@@ -1349,6 +1390,9 @@ window.submitPasswordCheck = submitPasswordCheck;
 window.submitNewPassword = submitNewPassword;
 window.logExercise = logExercise;
 window.deleteExercise = deleteExercise;
+window.editWeightEntry = editWeightEntry;
+window.saveWeightEdit = saveWeightEdit;
+window.deleteWeightEntry = deleteWeightEntry;
 
 /* ============================================================
    INIT
