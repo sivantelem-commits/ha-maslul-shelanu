@@ -92,10 +92,11 @@
     box-shadow:0 -4px 16px rgba(0,0,0,.05);
   }
   nav#bottomnav button{
-    flex:1;background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:2px;
-    padding:6px 2px;font-size:10px;color:var(--muted);cursor:pointer;font-family:'Heebo',sans-serif;
+    flex:1;background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:1px;
+    padding:6px 1px;font-size:9px;color:var(--muted);cursor:pointer;font-family:'Heebo',sans-serif;
+    min-width:0;
   }
-  nav#bottomnav button .ic{font-size:19px;}
+  nav#bottomnav button .ic{font-size:17px;}
   nav#bottomnav button.active{color:var(--primary);font-weight:700;}
 
   /* day tabs for menu */
