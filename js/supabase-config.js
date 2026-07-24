@@ -12,5 +12,5 @@
 // ציבורי מטבעו ומיועד לרוץ בדפדפן - ההגנה על הנתונים היא ברמת ה-RLS policies
 // בטבלה (מוגדר ב-README), לא בהסתרת המפתח.
 
-export const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
-export const SUPABASE_ANON_KEY = "YOUR_ANON_PUBLIC_KEY";
+export const SUPABASE_URL = "https://zsdhhjjjibevtbumgmha.supabase.co";
+export const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzZGhoampqaWJldnRidW1nbWhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ4OTAwNzUsImV4cCI6MjEwMDQ2NjA3NX0.2IkznAtiTjMUcm9bwFcYT8-ZUs3hW4j6jWelw8cUOz4";
