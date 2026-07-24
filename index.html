@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>המסלול שלנו</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800&family=Heebo:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2F6F62">
+<link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+<div id="app">
+
+  <div id="gate">
+    <div class="leaf">🌿</div>
+    <h1>המסלול שלנו</h1>
+    <p>תפריט, מים, משקל ותגים — ביחד</p>
+    <div id="profile-list"></div>
+    <div id="new-profile-form" style="margin-top:10px;width:100%;max-width:320px;">
+      <div class="field"><input id="new-profile-name" placeholder="הוספת פרופיל חדש (שם)"></div>
+      <button class="btn block" onclick="createProfile()">הוספת פרופיל</button>
+    </div>
+  </div>
+
+  <div id="mainapp" hidden style="display:flex;flex-direction:column;flex:1;">
+    <header>
+      <div class="row">
+        <div>
+          <div class="greet">שלום,</div>
+          <div class="name" id="header-name">-</div>
+          <div class="date" id="header-date">-</div>
+        </div>
+        <button class="switch" onclick="switchProfile()">החלפת פרופיל</button>
+      </div>
+    </header>
+    <main id="tab-content"></main>
+    <nav id="bottomnav">
+      <button data-tab="dashboard"><span class="ic">🏠</span>דשבורד</button>
+      <button data-tab="menu"><span class="ic">🍽️</span>תפריט</button>
+      <button data-tab="water"><span class="ic">💧</span>מים</button>
+      <button data-tab="weight"><span class="ic">⚖️</span>משקל</button>
+      <button data-tab="badges"><span class="ic">🏅</span>תגים</button>
+      <button data-tab="shopping"><span class="ic">🛒</span>קניות</button>
+    </nav>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+<div class="overlay hidden" id="overlay"><div class="sheet" id="sheet"></div></div>
+
+<script type="module" src="js/app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW registration failed', err));
+    });
+  }
+</script>
+</body>
+</html>
