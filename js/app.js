@@ -102,7 +102,7 @@ const MEAL_DATA = {
   {id:'d15',name:'פשטידת ירקות קטנה (מיני פריטטה)',calories:300,ingredients:['2 ביצים','ירקות מגוונים','כף קמח'],recipe:'לערבב ביצים טרופות עם ירקות קצוצים וקמח, לאפות בתבנית קטנה בתנור 180 מעלות כ-25 דקות.'}
  ],
  snack3:[
-  {id:'s3a',name:'יוגורט קטן',calories:100,ingredients:['יוגורט 120 גרם'],recipe:'להגיש קר.'},
+  {id:'s3a',name:'יוגורט קטן',calories:100,ingredients:['120 גרם יוגורט 5%'],recipe:'להגיש קר.'},
   {id:'s3b',name:'פרי קטן',calories:80,ingredients:['פרי קטן'],recipe:'לאכול כמו שהוא.'},
   {id:'s3c',name:'חצי כוס חלב',calories:90,ingredients:['חצי כוס חלב או משקה שקדים'],recipe:'לחמם מעט ולהגיש.'},
   {id:'s3d',name:'שני תמרים',calories:100,ingredients:['2 תמרים'],recipe:'לאכול כמו שהם.'},
@@ -206,11 +206,11 @@ const MEAL_DATA = {
   {id:'d15',name:'פשטידת ירקות קטנה (מיני פריטטה)',calories:370,ingredients:['3 ביצים','ירקות מגוונים','כף קמח'],recipe:'לערבב ביצים טרופות עם ירקות קצוצים וקמח, לאפות בתבנית קטנה בתנור 180 מעלות כ-25 דקות.'}
  ],
  snack3:[
-  {id:'s3a',name:'יוגורט',calories:110,ingredients:['יוגורט 150 גרם'],recipe:'להגיש קר.'},
+  {id:'s3a',name:'יוגורט',calories:110,ingredients:['150 גרם יוגורט 5%'],recipe:'להגיש קר.'},
   {id:'s3b',name:'תפוח + 5 שקדים',calories:150,ingredients:['תפוח עץ','5 שקדים'],recipe:'לאכול יחד.'},
   {id:'s3c',name:'כוס חלב חם',calories:110,ingredients:['כוס חלב או משקה שקדים'],recipe:'לחמם מעט ולהגיש.'},
   {id:'s3d',name:'שלושה תמרים',calories:140,ingredients:['3 תמרים'],recipe:'לאכול כמו שהם.'},
-  {id:'s3e',name:'יוגורט וקובייה שוקולד מריר',calories:140,ingredients:['יוגורט 150 גרם','קובייה שוקולד מריר 85%'],recipe:'להגיש יחד.'},
+  {id:'s3e',name:'יוגורט וקובייה שוקולד מריר',calories:140,ingredients:['150 גרם יוגורט 5%','קובייה שוקולד מריר 85%'],recipe:'להגיש יחד.'},
   {id:'s3f',name:'תה עם שני ביסקוויטים מלאים',calories:130,ingredients:['כוס תה','2 ביסקוויטים מלאים'],recipe:'להכין תה חם ולהגיש עם הביסקוויטים.'},
   {id:'s3g',name:'חלב חם עם קינמון',calories:120,ingredients:['כוס חלב או משקה שקדים','קינמון','כפית דבש'],recipe:'לחמם חלב ולהוסיף קינמון ודבש.'},
   {id:'s3h',name:'תה קמומיל עם ביסקוויטים',calories:110,ingredients:['כוס תה קמומיל','2 ביסקוויטים מלאים'],recipe:'להכין תה חם ולהגיש עם הביסקוויטים.'},
@@ -310,11 +310,11 @@ const MEAL_DATA = {
   {id:'d15',name:'פשטידת ירקות קטנה (מיני פריטטה)',calories:430,ingredients:['3 ביצים','ירקות מגוונים','2 כפות קמח וגבינה מגוררת'],recipe:'לערבב ביצים טרופות עם ירקות קצוצים, קמח וגבינה, לאפות בתבנית קטנה בתנור 180 מעלות כ-25 דקות.'}
  ],
  snack3:[
-  {id:'s3a',name:'יוגורט קטן',calories:100,ingredients:['יוגורט 150 גרם'],recipe:'להגיש קר.'},
+  {id:'s3a',name:'יוגורט קטן',calories:100,ingredients:['150 גרם יוגורט 5%'],recipe:'להגיש קר.'},
   {id:'s3b',name:'תפוח קטן',calories:80,ingredients:['תפוח עץ'],recipe:'לאכול כמו שהוא.'},
   {id:'s3c',name:'כוס חלב/שקדים חם',calories:110,ingredients:['כוס חלב או משקה שקדים'],recipe:'לחמם מעט ולהגיש.'},
   {id:'s3d',name:'ארבעה תמרים',calories:110,ingredients:['4 תמרים'],recipe:'לאכול כמו שהם.'},
-  {id:'s3e',name:'יוגורט וקובייה שוקולד מריר',calories:100,ingredients:['יוגורט 150 גרם','קובייה שוקולד מריר 85%'],recipe:'להגיש יחד.'},
+  {id:'s3e',name:'יוגורט וקובייה שוקולד מריר',calories:100,ingredients:['150 גרם יוגורט 5%','קובייה שוקולד מריר 85%'],recipe:'להגיש יחד.'},
   {id:'s3f',name:'תה עם ביסקוויט מלא',calories:90,ingredients:['כוס תה','ביסקוויט מלא אחד'],recipe:'להכין תה חם ולהגיש עם הביסקוויט.'},
   {id:'s3g',name:'חלב חם עם קינמון ודבש',calories:100,ingredients:['כוס חלב או משקה שקדים','קינמון','כפית דבש'],recipe:'לחמם חלב ולהוסיף קינמון ודבש.'},
   {id:'s3h',name:'תה קמומיל עם ביסקוויט',calories:90,ingredients:['כוס תה קמומיל','ביסקוויט מלא אחד'],recipe:'להכין תה חם ולהגיש עם הביסקוויט.'},
@@ -1147,15 +1147,30 @@ const UNIT_WORDS = [
 const PLURAL_MAP = {
   'ביצים':'ביצה', 'שקדים':'שקד', 'זיתים':'זית', 'תמרים':'תמר', 'אגוזים':'אגוז',
   'פריכיות':'פריכייה', 'קרקרים':'קרקר', 'קציצות':'קציצה', 'תפוחי אדמה':'תפוח אדמה',
-  'עגבניות':'עגבנייה', 'ביצי שליו':'ביצת שליו', 'תמרים':'תמר', 'צימוקים':'צימוקים',
+  'עגבניות':'עגבנייה', 'ביצי שליו':'ביצת שליו', 'צימוקים':'צימוקים',
 };
 // פריטים "בני מנייה" שגם ללא מספר מפורש נחשבים ליחידה אחת (למשל "עגבנייה פרוסה" = עגבנייה 1)
 const SINGLE_COUNTABLE = ['עגבנייה','מלפפון','בצל','לימון','פלפל','גזר','אבוקדו','תפוח עץ','תפוח אדמה','בטטה','חציל','ביצה'];
 
+// יחידות שבפועל הן "מידות שימוש" מתוך מוצר קיים (שמן, תבלינים) ולא כמות שקונים
+// בחנות לפי הכף/כפית - אלה עוברים לרשימה הכללית (תזכורת "צריך" בלי סכימת כפיות)
+const STAPLE_UNITS = ['כף','כפית'];
+
 const DESCRIPTOR_SUFFIXES = ['צלוי','צלויה','צלויים','צלויות','קשה','קשות','מבושל','מבושלת','מבושלים','מבושלות',
   'טרי','טריים','טריות','חתוך','חתוכה','חתוכים','חתוכות','קצוץ','קצוצה','קצוצים','אפוי','אפויה','אפויים','אפויות',
   'מטוגן','מטוגנת','מוקפץ','מוקפצים','גרוס','גרוסים','גרוסה','מרוסק','מרוסקת','פרוסה','מפוררת','טרופה','טרופות',
-  'מגורר','מגוררת','קלוף','קלופים'];
+  'מגורר','מגוררת','קלוף','קלופים',
+  'קטן','קטנה','קטנים','קטנות','גדול','גדולה','גדולים','גדולות','בינוני','בינונית','בינוניים','בינוניות'];
+
+// כמה ניסוחים שונים למושג אחד (בעיקר ירקות/פירות כלליים) - מאוחדים לשם קנוני אחד
+// כדי שלא יופיעו כמה שורות שונות ברשימת הקניות עבור אותו דבר בפועל
+const GENERIC_ALIASES = {
+  'ירקות מגוונים':'ירקות', 'סלט ירקות':'ירקות', 'ירקות טריים':'ירקות', 'ירקות חתוכים':'ירקות',
+  'ירקות מוקפצים':'ירקות', 'ירקות אפויים':'ירקות', 'ירקות מאודים':'ירקות', 'ירקות שורש':'ירקות',
+  'סלט ירוק':'ירקות',
+  'פרי':'פרי עונה', 'פרי קטן':'פרי עונה', 'פרי לקישוט':'פרי עונה',
+};
+
 function canonicalizeName(name){
   let n = name.trim();
   if(PLURAL_MAP[n]) n = PLURAL_MAP[n];
@@ -1166,6 +1181,7 @@ function canonicalizeName(name){
     }
   }
   if(PLURAL_MAP[n]) n = PLURAL_MAP[n];
+  if(GENERIC_ALIASES[n]) n = GENERIC_ALIASES[n];
   return n.trim();
 }
 
@@ -1225,6 +1241,12 @@ function parseIngredient(raw){
 
   rest = rest.trim();
 
+  // כף/כפית הן מידות שימוש ממוצר קיים (שמן, תבלינים) - לא כמות שקונים בחנות.
+  // מוצגות כתזכורת כללית ברשימה, בלי לסכם "13 כפית שמן זית"
+  if(unit && STAPLE_UNITS.includes(unit)){
+    return {name: canonicalizeName(rest), amount:null, unit:null};
+  }
+
   if(amount!==null && unit){
     return {name: canonicalizeName(rest), amount, unit};
   }
@@ -1240,6 +1262,12 @@ function parseIngredient(raw){
   }
   // לא ניתן לכימות (ירקות מגוונים, רוטב עגבניות, תיבול...) - יוצג כפריט רגיל
   return {name: canonicalizeName(text), amount:null, unit:null};
+}
+
+const UNIT_PLURALS = {'יחידה':'יחידות','פרוסה':'פרוסות','כוס':'כוסות','גביע':'גביעים','קובייה':'קוביות','גרם':'גרם'};
+function unitLabel(unit, amount){
+  if(amount===1) return unit;
+  return UNIT_PLURALS[unit] || unit;
 }
 
 function formatAmount(amount){
@@ -1350,7 +1378,12 @@ async function renderShopping(){
     <div class="card">
       <h3>🛒 רשימת קניות</h3>
       <div class="muted" style="margin-bottom:8px;">כמויות מאוחדות ומסוכמות לפי התפריט בטווח שנבחר</div>
-      ${quantifiedItems.length ? quantifiedItems.map(q=>rowHtml(`${q.name} — ${formatAmount(q.total)} ${q.unit}`, `${q.name}|${q.unit}`)).join('') : ''}
+      ${quantifiedItems.length ? quantifiedItems.map(q=>{
+        // פריטים "בני מנייה" (יחידה) מעוגלים כלפי מעלה - אי אפשר לקנות שמינית אבוקדו בחנות
+        const displayAmount = q.unit==='יחידה' ? Math.ceil(q.total) : q.total;
+        const label = unitLabel(q.unit, displayAmount);
+        return rowHtml(`${q.name} — ${formatAmount(displayAmount)} ${label}`, `${q.name}|${q.unit}`);
+      }).join('') : ''}
       ${genericItems.length ? `<div class="muted" style="margin:12px 0 6px;font-size:12px;">פריטים נוספים (כמות לפי הצורך)</div>` : ''}
       ${genericItems.map(name=>rowHtml(`${name}${generic[name]>1?' (נדרש '+generic[name]+' פעמים)':''}`, `generic:${name}`)).join('')}
       ${(!quantifiedItems.length && !genericItems.length) ? '<div class="muted">עדיין לא נבחר תפריט לטווח התאריכים הזה</div>' : ''}
