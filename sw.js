@@ -1,7 +1,10 @@
-// Service Worker פשוט - שומר את "מעטפת" האפליקציה (HTML/CSS/JS) במטמון
-// כדי שהאפליקציה תיפתח גם בלי אינטרנט. הנתונים עצמם (מים/משקל/תפריט)
-// עדיין דורשים חיבור לאינטרנט כדי להסתנכרן מול Supabase.
-const CACHE_NAME = 'ha-maslul-shelanu-v1';
+// Service Worker - "מעטפת" האפליקציה (HTML/CSS/JS) נשמרת במטמון כדי
+// שהאפליקציה תיפתח גם בלי אינטרנט, אבל תמיד מנסה קודם לטעון גרסה
+// טרייה מהרשת (network-first) - כך שעדכונים עתידיים ייכנסו לתוקף
+// באופן מיידי, ולא יישארו "תקועים" על גרסה ישנה שנשמרה במטמון.
+// הנתונים עצמם (מים/משקל/תפריט) תמיד דורשים חיבור לאינטרנט כדי
+// להסתנכרן מול Supabase - הם לא נשמרים כאן בכלל.
+const CACHE_NAME = 'ha-maslul-shelanu-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -31,17 +34,17 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // רק בקשות GET לקבצים באותו מקור (לא בקשות ל-Firestore/Google)
+  // רק בקשות GET לקבצים באותו מקור (לא בקשות ל-Supabase/Google)
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
+    fetch(event.request)
+      .then((response) => {
         const clone = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         return response;
-      }).catch(() => cached);
-    })
+      })
+      .catch(() => caches.match(event.request)) // אין אינטרנט - נופלים חזרה לגרסה השמורה
   );
 });
