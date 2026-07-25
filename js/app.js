@@ -1063,6 +1063,7 @@ async function renderMenu(){
         ${TIERS.map(t=>`<button class="btn ${settings.tier===t?'':'secondary'}" onclick="setTier(${t})">${t} קלוריות</button>`).join('')}
       </div>
       <button class="link-btn" style="margin-top:10px;" onclick="openPreferencesSheet()">⚙️ העדפות אכילה (מה שאני לא אוכל/ת)</button>
+      <button class="btn secondary block" style="margin-top:10px;" onclick="printWeeklyMenu()">🖨️ הדפסת התפריט השבועי / PDF</button>
     </div>
     <div class="card" style="padding:12px 16px;">
       <div style="display:flex;align-items:center;justify-content:space-between;">
@@ -1960,6 +1961,7 @@ async function renderShopping(){
     <div class="card">
       <h3>🛒 רשימת קניות</h3>
       <div class="muted" style="margin-bottom:8px;">כמויות מאוחדות ומסוכמות לפי התפריט בטווח שנבחר</div>
+      <button class="btn secondary block" style="margin-bottom:10px;" onclick="printShoppingList()">🖨️ הדפסה / שמירה כ-PDF</button>
       ${quantifiedToBuy.map(q=>rowHtml(toShoppingDisplay(q.name, q.unit, q.total), `${q.name}|${q.unit}`, false)).join('')}
       ${genericToBuy.length ? `<div class="muted" style="margin:12px 0 6px;font-size:12px;">פריטים נוספים (כמות לפי הצורך)</div>` : ''}
       ${genericToBuy.map(name=>rowHtml(`${name}${generic[name]>1?' (נדרש '+generic[name]+' פעמים)':''}`, `generic:${name}`, false)).join('')}
@@ -1993,6 +1995,95 @@ async function removeFromPantry(encKey){
   await sSet('pantry-staples', list);
   renderShopping();
 }
+/* ============================================================
+   הדפסה / ייצוא ל-PDF
+   משתמשים בדיאלוג ההדפסה המובנה של הדפדפן - בכל מכשיר (נייד/מחשב)
+   יש באפשרויות ההדפסה גם "שמירה כ-PDF" כיעד, כך שאין צורך בספרייה
+   חיצונית. #print-area מוסתר במסך הרגיל ומוצג רק במצב הדפסה
+   (ראו css/style.css @media print).
+============================================================ */
+async function printShoppingList(){
+  const range = await getShoppingRange();
+  const startDate = new Date(range.start+'T00:00:00');
+  const endDate = new Date(range.end+'T00:00:00');
+  const dayCount = Math.round((endDate-startDate)/(1000*60*60*24)) + 1;
+  const profiles = PROFILES.length ? PROFILES : [CURRENT_PROFILE];
+  const profileTiers = {};
+  for(const p of profiles){
+    const s = (await sGet(`settings:${p}`)) || {tier:1500};
+    profileTiers[p] = s.tier;
+  }
+  const rawList = [];
+  for(let i=0;i<dayCount;i++){
+    const date = addDays(startDate,i);
+    const dateStr = todayStr(date);
+    const separate = await getSeparateDay(dateStr);
+    const shared = await getSharedSelection(dateStr);
+    for(const slot of SLOTS){
+      const isShared = slot.shared && !separate && profiles.length>1;
+      for(const p of profiles){
+        const options = await allOptionsFor(profileTiers[p], slot.id);
+        const selId = isShared ? (shared[slot.id] || options[0].id) : ((await sGet(`menu:${p}:${dateStr}`)) || {})[slot.id] || options[0].id;
+        const opt = options.find(o=>o.id===selId) || options[0];
+        opt.ingredients.forEach(ing=> rawList.push(ing));
+      }
+    }
+  }
+  const quantified = {}; const generic = {};
+  rawList.forEach(raw=>{
+    const p = parseIngredient(raw);
+    if(p.unit){
+      const key = p.name+'|'+p.unit;
+      if(!quantified[key]) quantified[key] = {name:p.name, unit:p.unit, total:0};
+      quantified[key].total += p.amount;
+    } else {
+      generic[p.name] = (generic[p.name]||0)+1;
+    }
+  });
+  const pantry = await getPantryStaples();
+  const pantrySet = new Set(pantry);
+  const quantifiedItems = Object.values(quantified).sort((a,b)=>a.name.localeCompare(b.name,'he')).filter(q=>!pantrySet.has(`${q.name}|${q.unit}`));
+  const genericItems = Object.keys(generic).sort((a,b)=>a.localeCompare(b,'he')).filter(n=>!pantrySet.has(`generic:${n}`));
+
+  const html = `
+    <div class="print-title">🛒 רשימת קניות - המסלול שלנו</div>
+    <div class="print-subtitle">${fmtDate(startDate)} - ${fmtDate(endDate)}</div>
+    ${quantifiedItems.map(q=>`<div class="print-item"><span class="print-checkbox"></span>${toShoppingDisplay(q.name,q.unit,q.total)}</div>`).join('')}
+    ${genericItems.length ? '<div class="print-section-title">פריטים נוספים</div>' : ''}
+    ${genericItems.map(n=>`<div class="print-item"><span class="print-checkbox"></span>${n}${generic[n]>1?' (נדרש '+generic[n]+' פעמים)':''}</div>`).join('')}
+    ${(!quantifiedItems.length && !genericItems.length) ? '<div>אין פריטים לרשימה הזו</div>' : ''}
+  `;
+  document.getElementById('print-area').innerHTML = html;
+  window.print();
+}
+
+async function printWeeklyMenu(){
+  const settings = await ensureSettings();
+  const tier = settings.tier;
+  const weekStart = addDays(getWeekStart(), MENU_WEEK_OFFSET*7);
+  const others = otherProfileNames();
+  let html = `<div class="print-title">🍽️ התפריט השבועי - ${CURRENT_PROFILE}</div>
+    <div class="print-subtitle">${fmtDate(weekStart)} - ${fmtDate(addDays(weekStart,6))} · תפריט ${tier} קלוריות</div>`;
+  for(let i=0;i<7;i++){
+    const date = addDays(weekStart,i);
+    const dateStr = todayStr(date);
+    const personalMenu = (await sGet(`menu:${CURRENT_PROFILE}:${dateStr}`)) || {};
+    const separate = await getSeparateDay(dateStr);
+    const shared = await getSharedSelection(dateStr);
+    html += `<div class="print-day"><h3>${DAY_NAMES[i]} ${fmtDate(date)}</h3>`;
+    for(const slot of SLOTS){
+      const isShared = slot.shared && !separate && others.length>0;
+      const options = await allOptionsFor(tier, slot.id);
+      const selectedId = isShared ? (shared[slot.id]||options[0].id) : (personalMenu[slot.id]||options[0].id);
+      const selected = options.find(o=>o.id===selectedId) || options[0];
+      html += `<div class="print-meal"><b>${slot.icon} ${slot.name}${isShared?' (משותף)':''}:</b> ${selected.name} (${selected.calories} קק"ל)<div class="ing">${selected.ingredients.join(' · ')}</div></div>`;
+    }
+    html += `</div>`;
+  }
+  document.getElementById('print-area').innerHTML = html;
+  window.print();
+}
+
 async function toggleShopItem(rangeKey, encIng, checked){
   const itemKey = decodeURIComponent(encIng);
   const checks = (await sGet(`shopping-checks:${rangeKey}`)) || {};
@@ -2024,6 +2115,8 @@ window.closeSheet = closeSheet;
 window.changeMenuWeek = changeMenuWeek;
 window.toggleSeparateDay = toggleSeparateDay;
 window.openPreferencesSheet = openPreferencesSheet;
+window.printShoppingList = printShoppingList;
+window.printWeeklyMenu = printWeeklyMenu;
 window.savePreferences = savePreferences;
 window.setShoppingRangePreset = setShoppingRangePreset;
 window.updateShoppingRangeFromInputs = updateShoppingRangeFromInputs;
