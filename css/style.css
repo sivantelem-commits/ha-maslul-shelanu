@@ -145,3 +145,24 @@
   .weight-chart{width:100%;height:150px;}
   .reminder-banner{background:var(--accent-soft);color:var(--danger);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
   .reminder-banner button{background:var(--danger);color:#fff;border:none;border-radius:10px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;}
+
+  /* ---------- הדפסה / ייצוא PDF ---------- */
+  #print-area{display:none;}
+  @media print{
+    body *{visibility:hidden;}
+    #print-area, #print-area *{visibility:visible;}
+    #print-area{
+      display:block;position:absolute;top:0;right:0;left:0;
+      padding:20px;font-family:'Heebo',Arial,sans-serif;color:#000;direction:rtl;
+    }
+    .print-title{font-size:22px;font-weight:800;margin-bottom:4px;color:#000;}
+    .print-subtitle{font-size:13px;color:#444;margin-bottom:16px;}
+    .print-day{margin-top:18px;page-break-inside:avoid;}
+    .print-day h3{font-size:16px;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:8px;}
+    .print-meal{margin-bottom:8px;font-size:13px;}
+    .print-meal b{font-size:13px;}
+    .print-meal .ing{color:#555;font-size:12px;}
+    .print-section-title{font-size:15px;font-weight:700;margin:16px 0 6px;border-bottom:1px solid #000;padding-bottom:4px;}
+    .print-item{padding:4px 0;font-size:13px;border-bottom:1px solid #ddd;}
+    .print-checkbox{display:inline-block;width:12px;height:12px;border:1.5px solid #000;margin-left:8px;vertical-align:middle;}
+  }
