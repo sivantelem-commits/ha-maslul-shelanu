@@ -1154,7 +1154,7 @@ async function renderWeight(){
     <div class="card">
       <h3>⚖️ הוספת שקילה</h3>
       <div class="btn-row">
-        <input id="new-weight" type="number" step="0.1" placeholder="משקל בק״ג" style="flex:1;">
+        <input id="new-weight" type="number" inputmode="decimal" step="0.1" placeholder="משקל בק״ג (למשל 72.5)" style="flex:1;">
         <button class="btn" onclick="logWeight()">שמירה</button>
       </div>
       <div class="muted" style="margin-top:6px;">מומלץ לשקול פעם בשבוע, באותו יום ושעה</div>
@@ -1164,7 +1164,7 @@ async function renderWeight(){
       </div>
       <div class="field">
         <label>משקל יעד (ק״ג)</label>
-        <input id="goal-weight-input" type="number" step="0.1" value="${goalWeight||''}" placeholder="לא הוגדר" onchange="updateGoalWeight(this.value)">
+        <input id="goal-weight-input" type="number" inputmode="decimal" step="0.1" value="${goalWeight||''}" placeholder="לא הוגדר" onchange="updateGoalWeight(this.value)">
       </div>
     </div>
     <div class="card">
@@ -1193,7 +1193,7 @@ async function renderWeight(){
 }
 async function updateGoalWeight(v){
   const s = await ensureSettings();
-  const num = Number(v);
+  const num = parseDecimal(v);
   s.goalWeight = num>0 ? num : null;
   await sSet(`settings:${CURRENT_PROFILE}`, s);
   renderWeight();
@@ -1224,8 +1224,13 @@ function drawWeightChart(log, goalWeight){
     ${dots}
   </svg>`;
 }
+// תומך גם בהזנת פסיק כנקודה עשרונית (נפוץ במקלדות מסוימות) - "125,5" ייחשב כ-125.5
+function parseDecimal(str){
+  if(str===null || str===undefined) return NaN;
+  return parseFloat(String(str).trim().replace(',', '.'));
+}
 async function logWeight(){
-  const v = Number(document.getElementById('new-weight').value);
+  const v = parseDecimal(document.getElementById('new-weight').value);
   if(!v || v<=0){ showToast('נא להזין משקל תקין'); return; }
   const log = (await sGet(`weight-log:${CURRENT_PROFILE}`)) || [];
   log.push({date: todayStr(), weight: v});
@@ -1242,13 +1247,13 @@ async function editWeightEntry(idx){
     <button class="sheet-close" onclick="closeSheet()">✕</button>
     <h3>עריכת שקילה</h3>
     <div class="field"><label>תאריך</label><input id="edit-weight-date" type="date" value="${entry.date}"></div>
-    <div class="field"><label>משקל (ק״ג)</label><input id="edit-weight-value" type="number" step="0.1" value="${entry.weight}"></div>
+    <div class="field"><label>משקל (ק״ג)</label><input id="edit-weight-value" type="number" inputmode="decimal" step="0.1" value="${entry.weight}"></div>
     <button class="btn block" onclick="saveWeightEdit(${idx})">שמירה</button>
   `);
 }
 async function saveWeightEdit(idx){
   const date = document.getElementById('edit-weight-date').value;
-  const weight = Number(document.getElementById('edit-weight-value').value);
+  const weight = parseDecimal(document.getElementById('edit-weight-value').value);
   if(!weight || weight<=0){ showToast('נא להזין משקל תקין'); return; }
   const log = (await sGet(`weight-log:${CURRENT_PROFILE}`)) || [];
   log[idx] = {date, weight};
@@ -1564,204 +1569,4 @@ function toShoppingDisplay(name, unit, total){
    SHOPPING TAB - טווח תאריכים חופשי (לא בהכרח שבוע)
 ============================================================ */
 async function getShoppingRange(){
-  const saved = await sGet(`shopping-range:${CURRENT_PROFILE}`);
-  if(saved) return saved;
-  const start = getWeekStart();
-  const end = addDays(start, 6);
-  return {start: todayStr(start), end: todayStr(end)};
-}
-async function setShoppingRangePreset(daysAhead, daysLength){
-  const start = addDays(getWeekStart(), daysAhead);
-  const end = addDays(start, daysLength-1);
-  const range = {start: todayStr(start), end: todayStr(end)};
-  await sSet(`shopping-range:${CURRENT_PROFILE}`, range);
-  renderShopping();
-}
-async function updateShoppingRangeFromInputs(){
-  const start = document.getElementById('shop-range-start').value;
-  const end = document.getElementById('shop-range-end').value;
-  if(!start || !end || start > end){ showToast('טווח תאריכים לא תקין'); return; }
-  await sSet(`shopping-range:${CURRENT_PROFILE}`, {start, end});
-  renderShopping();
-}
-
-async function renderShopping(){
-  const el = document.getElementById('tab-content');
-  el.innerHTML = '<div class="card muted">בונה רשימת קניות...</div>';
-  const range = await getShoppingRange();
-  const startDate = new Date(range.start+'T00:00:00');
-  const endDate = new Date(range.end+'T00:00:00');
-  const dayCount = Math.round((endDate-startDate)/(1000*60*60*24)) + 1;
-  const rangeKey = `${range.start}_${range.end}`;
-
-  const profiles = PROFILES.length ? PROFILES : [CURRENT_PROFILE];
-  const profileTiers = {};
-  for(const p of profiles){
-    const s = (await sGet(`settings:${p}`)) || {tier:1500};
-    profileTiers[p] = s.tier;
-  }
-
-  // איסוף כל המרכיבים הגולמיים לטווח הנבחר:
-  // - ארוחות משותפות (צהריים/ערב, כשלא סומן "בנפרד" לאותו יום): מנה אחת, אבל קונים
-  //   לפי המנה של כל אחת מבני הבית (כל אחת לפי רמת הקלוריות שלה)
-  // - ארוחות אישיות: כל אחת לפי הבחירה והרמה שלה
-  const rawList = [];
-  for(let i=0;i<dayCount;i++){
-    const date = addDays(startDate,i);
-    const dateStr = todayStr(date);
-    const separate = await getSeparateDay(dateStr);
-    const shared = await getSharedSelection(dateStr);
-    for(const slot of SLOTS){
-      const isShared = slot.shared && !separate && profiles.length>1;
-      if(isShared){
-        for(const p of profiles){
-          const options = await allOptionsFor(profileTiers[p], slot.id);
-          const selId = shared[slot.id] || options[0].id;
-          const opt = options.find(o=>o.id===selId) || options[0];
-          opt.ingredients.forEach(ing=> rawList.push(ing));
-        }
-      } else {
-        for(const p of profiles){
-          const menu = (await sGet(`menu:${p}:${dateStr}`)) || {};
-          const options = await allOptionsFor(profileTiers[p], slot.id);
-          const selId = menu[slot.id] || options[0].id;
-          const opt = options.find(o=>o.id===selId) || options[0];
-          opt.ingredients.forEach(ing=> rawList.push(ing));
-        }
-      }
-    }
-  }
-
-  // איחוד: פריטים מכומתים נצברים לפי (שם+יחידה), פריטים לא-מכומתים נספרים כמו קודם
-  const quantified = {}; // key: name|unit -> {name, unit, total}
-  const generic = {}; // name -> count
-  rawList.forEach(raw=>{
-    const p = parseIngredient(raw);
-    if(p.unit){
-      const key = p.name+'|'+p.unit;
-      if(!quantified[key]) quantified[key] = {name:p.name, unit:p.unit, total:0};
-      quantified[key].total += p.amount;
-    } else {
-      generic[p.name] = (generic[p.name]||0)+1;
-    }
-  });
-
-  const checks = (await sGet(`shopping-checks:${rangeKey}`)) || {};
-  const pantry = await getPantryStaples();
-  const pantrySet = new Set(pantry);
-  const quantifiedItems = Object.values(quantified).sort((a,b)=>a.name.localeCompare(b.name,'he'));
-  const genericItems = Object.keys(generic).sort((a,b)=>a.localeCompare(b,'he'));
-
-  const quantifiedToBuy = quantifiedItems.filter(q=>!pantrySet.has(`${q.name}|${q.unit}`));
-  const quantifiedInPantry = quantifiedItems.filter(q=>pantrySet.has(`${q.name}|${q.unit}`));
-  const genericToBuy = genericItems.filter(n=>!pantrySet.has(`generic:${n}`));
-  const genericInPantry = genericItems.filter(n=>pantrySet.has(`generic:${n}`));
-
-  function rowHtml(displayText, itemKey, inPantry){
-    const enc = encodeURIComponent(itemKey);
-    return `
-      <div class="shop-item ${checks[itemKey]?'checked':''}" data-ing="${enc}" style="${inPantry?'opacity:.6;':''}">
-        <input type="checkbox" ${checks[itemKey]?'checked':''} onchange="toggleShopItem('${rangeKey}','${enc}', this.checked)">
-        <span style="flex:1;">${displayText}</span>
-        <button class="link-btn" style="font-size:11px;white-space:nowrap;" onclick="${inPantry?'removeFromPantry':'addToPantry'}('${enc}')">${inPantry?'החזרה לרשימה':'🏠 יש בבית'}</button>
-      </div>`;
-  }
-
-  el.innerHTML = `
-    <div class="card" style="padding:12px 16px;">
-      <div style="font-weight:700;color:var(--primary-dark);margin-bottom:8px;">טווח תאריכים לרשימת הקניות</div>
-      <div class="btn-row" style="margin-bottom:10px;">
-        <button class="btn secondary" onclick="setShoppingRangePreset(0,7)">השבוע הזה</button>
-        <button class="btn secondary" onclick="setShoppingRangePreset(7,7)">השבוע הבא</button>
-        <button class="btn secondary" onclick="setShoppingRangePreset(0,14)">שבועיים מהיום</button>
-      </div>
-      <div class="btn-row">
-        <div class="field" style="flex:1;margin-bottom:0;"><label>מתאריך</label><input type="date" id="shop-range-start" value="${range.start}"></div>
-        <div class="field" style="flex:1;margin-bottom:0;"><label>עד תאריך</label><input type="date" id="shop-range-end" value="${range.end}"></div>
-      </div>
-      <button class="btn block" style="margin-top:10px;" onclick="updateShoppingRangeFromInputs()">עדכון טווח</button>
-      <div class="muted" style="margin-top:8px;text-align:center;">${fmtDate(startDate)} - ${fmtDate(endDate)} (${dayCount} ימים)</div>
-    </div>
-    <div class="card">
-      <h3>🛒 רשימת קניות</h3>
-      <div class="muted" style="margin-bottom:8px;">כמויות מאוחדות ומסוכמות לפי התפריט בטווח שנבחר</div>
-      ${quantifiedToBuy.map(q=>rowHtml(toShoppingDisplay(q.name, q.unit, q.total), `${q.name}|${q.unit}`, false)).join('')}
-      ${genericToBuy.length ? `<div class="muted" style="margin:12px 0 6px;font-size:12px;">פריטים נוספים (כמות לפי הצורך)</div>` : ''}
-      ${genericToBuy.map(name=>rowHtml(`${name}${generic[name]>1?' (נדרש '+generic[name]+' פעמים)':''}`, `generic:${name}`, false)).join('')}
-      ${(!quantifiedToBuy.length && !genericToBuy.length) ? '<div class="muted">אין מה לקנות - הכל כבר יש בבית, או שלא נבחר תפריט 🎉</div>' : ''}
-    </div>
-    ${(quantifiedInPantry.length || genericInPantry.length) ? `
-    <div class="card">
-      <h3>🏠 כבר יש לנו בבית</h3>
-      <div class="muted" style="margin-bottom:8px;">לא נכללים ברשימה למעלה - לחצו "החזרה לרשימה" אם נגמר</div>
-      ${quantifiedInPantry.map(q=>rowHtml(toShoppingDisplay(q.name, q.unit, q.total), `${q.name}|${q.unit}`, true)).join('')}
-      ${genericInPantry.map(name=>rowHtml(name, `generic:${name}`, true)).join('')}
-    </div>` : ''}
-  `;
-}
-async function getPantryStaples(){
-  return (await sGet('pantry-staples')) || [];
-}
-async function addToPantry(encKey){
-  const itemKey = decodeURIComponent(encKey);
-  const list = await getPantryStaples();
-  if(!list.includes(itemKey)) list.push(itemKey);
-  await sSet('pantry-staples', list);
-  showToast('סומן כ"יש בבית" 🏠');
-  renderShopping();
-}
-async function removeFromPantry(encKey){
-  const itemKey = decodeURIComponent(encKey);
-  const list = await getPantryStaples();
-  const idx = list.indexOf(itemKey);
-  if(idx>-1) list.splice(idx,1);
-  await sSet('pantry-staples', list);
-  renderShopping();
-}
-async function toggleShopItem(rangeKey, encIng, checked){
-  const itemKey = decodeURIComponent(encIng);
-  const checks = (await sGet(`shopping-checks:${rangeKey}`)) || {};
-  checks[itemKey] = checked;
-  await sSet(`shopping-checks:${rangeKey}`, checks);
-  document.querySelector(`.shop-item[data-ing="${encIng}"]`).classList.toggle('checked', checked);
-}
-
-/* ============================================================
-   EXPOSE TO WINDOW
-   (נדרש כי הקובץ הוא ES module - פונקציות שנקראות מתוך onclick/onchange
-   בתוך ה-HTML חייבות להיות זמינות על window)
-============================================================ */
-window.createProfile = createProfile;
-window.switchProfile = switchProfile;
-window.setTier = setTier;
-window.showRecipe = showRecipe;
-window.addCustomOption = addCustomOption;
-window.saveCustomOption = saveCustomOption;
-window.addWater = addWater;
-window.addCustomWater = addCustomWater;
-window.logWeight = logWeight;
-window.updateHeight = updateHeight;
-window.updateGoalWeight = updateGoalWeight;
-window.addToPantry = addToPantry;
-window.removeFromPantry = removeFromPantry;
-window.toggleShopItem = toggleShopItem;
-window.closeSheet = closeSheet;
-window.changeMenuWeek = changeMenuWeek;
-window.toggleSeparateDay = toggleSeparateDay;
-window.openPreferencesSheet = openPreferencesSheet;
-window.savePreferences = savePreferences;
-window.setShoppingRangePreset = setShoppingRangePreset;
-window.updateShoppingRangeFromInputs = updateShoppingRangeFromInputs;
-window.onProfileClick = onProfileClick;
-window.submitPasswordCheck = submitPasswordCheck;
-window.submitNewPassword = submitNewPassword;
-window.logExercise = logExercise;
-window.deleteExercise = deleteExercise;
-window.editWeightEntry = editWeightEntry;
-window.saveWeightEdit = saveWeightEdit;
-window.deleteWeightEntry = deleteWeightEntry;
-
-/* ============================================================
-   INIT
-============================================================ */
-initGate();
+  const saved = aw
