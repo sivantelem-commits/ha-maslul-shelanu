@@ -899,6 +899,14 @@ async function renderDashboard(){
       <div class="btn-row">
         ${challenge.names.map(n=>`<span class="pill ${challenge.status[n]?'':'accent-pill'}">${n}: ${challenge.status[n]}/7 ימים</span>`).join('')}
       </div>
+      <div style="margin-top:10px;">
+        ${(challenge.details[CURRENT_PROFILE]||[]).map(d=>`
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;">
+            <span>${d.dayLabel}</span>
+            <span class="${d.met?'':'muted'}" style="color:${d.met?'var(--primary)':'var(--danger)'};">${(d.total/1000).toFixed(2)} ל' ${d.met?'✓':'✗'}</span>
+          </div>
+        `).join('')}
+      </div>
     </div>
   `;
 }
@@ -930,17 +938,23 @@ async function getWeeklyChallengeStatus(){
   const weekStart = getWeekStart();
   const names = PROFILES.length ? PROFILES : [CURRENT_PROFILE];
   const status = {};
+  const details = {}; // name -> [{dateStr, dayLabel, total, met}, ...] רק לימים שכבר עברו
   for(const name of names){
     let count = 0;
+    details[name] = [];
     for(let i=0;i<7;i++){
       const d = addDays(weekStart, i);
       if(d > new Date()) continue;
-      const w = await sGet(`water:${name}:${todayStr(d)}`);
-      if(w && w.total >= 2500) count++;
+      const dateStr = todayStr(d);
+      const w = await sGet(`water:${name}:${dateStr}`);
+      const total = w ? (w.total||0) : 0;
+      const met = total >= 2500;
+      if(met) count++;
+      details[name].push({dateStr, dayLabel: DAY_NAMES[i], total, met});
     }
     status[name] = count;
   }
-  return {names, status};
+  return {names, status, details};
 }
 
 /* ============================================================
