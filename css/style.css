@@ -166,3 +166,12 @@
     .print-item{padding:4px 0;font-size:13px;border-bottom:1px solid #ddd;}
     .print-checkbox{display:inline-block;width:12px;height:12px;border:1.5px solid #000;margin-left:8px;vertical-align:middle;}
   }
+
+  /* ---------- חגיגת תג חדש ---------- */
+  @keyframes badgePop{
+    0%{transform:scale(0) rotate(-15deg);opacity:0;}
+    60%{transform:scale(1.25) rotate(8deg);opacity:1;}
+    80%{transform:scale(0.95) rotate(-4deg);}
+    100%{transform:scale(1) rotate(0deg);}
+  }
+  .badge-pop{display:inline-block;animation:badgePop 0.6s cubic-bezier(.36,1.4,.4,1);}
