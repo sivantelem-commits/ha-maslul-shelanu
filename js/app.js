@@ -600,14 +600,40 @@ const MEAL_DATA = {
 };
 
 const BADGE_DEFS = [
+ // מים - כמות מצטברת
+ {id:'water_1', ic:'💦', label:'לגימה ראשונה', desc:'1 ליטר מים במצטבר', type:'water', threshold:1000},
  {id:'water_10', ic:'💧', label:'טיפה ראשונה', desc:'10 ליטר מים במצטבר', type:'water', threshold:10000},
+ {id:'water_25', ic:'🚿', label:'זורמים', desc:'25 ליטר מים במצטבר', type:'water', threshold:25000},
  {id:'water_50', ic:'🌊', label:'שוחים בכיף', desc:'50 ליטר מים במצטבר', type:'water', threshold:50000},
  {id:'water_100', ic:'🐋', label:'לווייתן', desc:'100 ליטר מים במצטבר', type:'water', threshold:100000},
+ {id:'water_200', ic:'🌅', label:'אוקיינוס', desc:'200 ליטר מים במצטבר', type:'water', threshold:200000},
+ // מים - רצף ימים
+ {id:'water_streak_3', ic:'✨', label:'התחלה טובה', desc:'3 ימים רצוף ביעד המים', type:'waterstreak', threshold:3},
  {id:'water_streak_7', ic:'🔥', label:'שבוע רטוב', desc:'7 ימים רצוף ביעד המים', type:'waterstreak', threshold:7},
- {id:'weight_2', ic:'🥉', label:'צעד ראשון', desc:'ירידה של 2 ק"ג', type:'weight', threshold:2},
+ {id:'water_streak_14', ic:'🔥', label:'שבועיים ברצף', desc:'14 ימים רצוף ביעד המים', type:'waterstreak', threshold:14},
+ {id:'water_streak_30', ic:'🏆', label:'חודש שלם', desc:'30 ימים רצוף ביעד המים', type:'waterstreak', threshold:30},
+ {id:'water_streak_100', ic:'💎', label:'מאה ימים', desc:'100 ימים רצוף ביעד המים', type:'waterstreak', threshold:100},
+ // משקל - ירידה מצטברת
+ {id:'weight_1', ic:'🌱', label:'צעד ראשון', desc:'ירידה של 1 ק"ג', type:'weight', threshold:1},
+ {id:'weight_2', ic:'🥉', label:'התקדמות', desc:'ירידה של 2 ק"ג', type:'weight', threshold:2},
+ {id:'weight_3', ic:'🥉', label:'בדרך הנכונה', desc:'ירידה של 3 ק"ג', type:'weight', threshold:3},
  {id:'weight_5', ic:'🥈', label:'חצי הדרך', desc:'ירידה של 5 ק"ג', type:'weight', threshold:5},
+ {id:'weight_7', ic:'🥈', label:'מתמידים', desc:'ירידה של 7 ק"ג', type:'weight', threshold:7},
  {id:'weight_10', ic:'🥇', label:'שינוי גדול', desc:'ירידה של 10 ק"ג', type:'weight', threshold:10},
+ {id:'weight_15', ic:'🏅', label:'הישג מרשים', desc:'ירידה של 15 ק"ג', type:'weight', threshold:15},
+ {id:'weight_20', ic:'👑', label:'שינוי מהותי', desc:'ירידה של 20 ק"ג', type:'weight', threshold:20},
+ // משקל - עקביות מעקב
  {id:'weigh_streak_4', ic:'📈', label:'עקביים', desc:'4 שקילות רצופות (שבועיות)', type:'weightlog', threshold:4},
+ {id:'weigh_streak_8', ic:'📊', label:'חודשיים של מעקב', desc:'8 שקילות רצופות (שבועיות)', type:'weightlog', threshold:8},
+ {id:'weigh_streak_12', ic:'📊', label:'רבעון שלם', desc:'12 שקילות רצופות (שבועיות)', type:'weightlog', threshold:12},
+ // פעילות גופנית - דקות מצטברות
+ {id:'exercise_60', ic:'🏃', label:'שעת פעילות ראשונה', desc:'60 דקות פעילות במצטבר', type:'exercisetotal', threshold:60},
+ {id:'exercise_300', ic:'💪', label:'חמש שעות', desc:'300 דקות פעילות במצטבר', type:'exercisetotal', threshold:300},
+ {id:'exercise_1000', ic:'🏆', label:'אלף דקות', desc:'1000 דקות פעילות במצטבר', type:'exercisetotal', threshold:1000},
+ // פעילות גופנית - רצף ימים
+ {id:'exercise_streak_3', ic:'⚡', label:'שלושה ימים פעילים', desc:'3 ימים רצוף עם פעילות גופנית', type:'exercisestreak', threshold:3},
+ {id:'exercise_streak_7', ic:'🔥', label:'שבוע פעיל', desc:'7 ימים רצוף עם פעילות גופנית', type:'exercisestreak', threshold:7},
+ {id:'exercise_streak_30', ic:'🏅', label:'חודש פעיל', desc:'30 ימים רצוף עם פעילות גופנית', type:'exercisestreak', threshold:30},
 ];
 
 /* ============================================================
@@ -769,6 +795,7 @@ async function doSelectProfile(name){
   document.getElementById('header-date').textContent = new Date().toLocaleDateString('he-IL',{weekday:'long',day:'numeric',month:'long'});
   await ensureSettings();
   await updateWaterStreakOnLoad();
+  await updateExerciseStreakOnLoad();
   goTab('dashboard');
   requestNotificationPermission();
   checkWaterReminder();
@@ -1273,7 +1300,16 @@ async function renderWater(){
     </div>
     <div class="card">
       <h3>יומן שתייה להיום</h3>
-      ${water.entries.length ? water.entries.slice().reverse().map(e=>`<div class="muted">${new Date(e.time).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})} — ${e.amount} מ"ל</div>`).join('') : '<div class="muted">עדיין לא נרשמה שתייה היום</div>'}
+      ${water.entries.length ? water.entries.slice().reverse().map((e,idx)=>{
+        const realIdx = water.entries.length-1-idx;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
+          <span class="muted">${new Date(e.time).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})} — ${e.amount} מ"ל</span>
+          <span>
+            <button class="link-btn" onclick="editWaterEntry(${realIdx})">עריכה</button>
+            <button class="link-btn" style="color:var(--danger);margin-right:10px;" onclick="deleteWaterEntry(${realIdx})">מחיקה</button>
+          </span>
+        </div>`;
+      }).join('') : '<div class="muted">עדיין לא נרשמה שתייה היום</div>'}
     </div>
   `;
 }
@@ -1298,12 +1334,59 @@ async function addCustomWater(){
   if(!v || v<=0){ showToast('נא להזין כמות תקינה'); return; }
   await addWater(v);
 }
+async function editWaterEntry(idx){
+  const today = todayStr();
+  const water = (await sGet(`water:${CURRENT_PROFILE}:${today}`)) || {total:0, entries:[], lastDrink:null};
+  const entry = water.entries[idx];
+  if(!entry) return;
+  openSheet(`
+    <button class="sheet-close" onclick="closeSheet()">✕</button>
+    <h3>עריכת רישום שתייה</h3>
+    <div class="field"><label>כמות (מ״ל)</label><input id="edit-water-amount" type="number" value="${entry.amount}"></div>
+    <button class="btn block" onclick="saveWaterEdit(${idx})">שמירה</button>
+  `);
+}
+async function saveWaterEdit(idx){
+  const newAmount = Number(document.getElementById('edit-water-amount').value);
+  if(!newAmount || newAmount<=0){ showToast('נא להזין כמות תקינה'); return; }
+  const today = todayStr();
+  const water = (await sGet(`water:${CURRENT_PROFILE}:${today}`)) || {total:0, entries:[], lastDrink:null};
+  const old = water.entries[idx];
+  if(!old) return;
+  const diff = newAmount - old.amount;
+  water.entries[idx] = {...old, amount:newAmount};
+  water.total = Math.max(0, water.total + diff);
+  await sSet(`water:${CURRENT_PROFILE}:${today}`, water);
+  const cum = (await sGet(`water-cumulative:${CURRENT_PROFILE}`)) || {total:0};
+  cum.total = Math.max(0, cum.total + diff);
+  await sSet(`water-cumulative:${CURRENT_PROFILE}`, cum);
+  closeSheet();
+  showToast('העדכון נשמר ✅');
+  renderWater();
+}
+async function deleteWaterEntry(idx){
+  const today = todayStr();
+  const water = (await sGet(`water:${CURRENT_PROFILE}:${today}`)) || {total:0, entries:[], lastDrink:null};
+  const removed = water.entries.splice(idx,1)[0];
+  if(!removed) return;
+  water.total = Math.max(0, water.total - removed.amount);
+  water.lastDrink = water.entries.length ? water.entries[water.entries.length-1].time : null;
+  await sSet(`water:${CURRENT_PROFILE}:${today}`, water);
+  const cum = (await sGet(`water-cumulative:${CURRENT_PROFILE}`)) || {total:0};
+  cum.total = Math.max(0, cum.total - removed.amount);
+  await sSet(`water-cumulative:${CURRENT_PROFILE}`, cum);
+  showToast('הרשומה נמחקה');
+  renderWater();
+}
 async function checkWaterReminder(){
   if(!CURRENT_PROFILE) return;
   await updateWaterStreakOnLoad();
+  await updateExerciseStreakOnLoad();
+  const currentHour = new Date().getHours();
+  const inQuietHours = currentHour >= 20 || currentHour < 6; // בלי תזכורות בין 20:00 ל-06:00
   const today = todayStr();
   const water = await sGet(`water:${CURRENT_PROFILE}:${today}`);
-  if(water && water.lastDrink){
+  if(water && water.lastDrink && !inQuietHours){
     const mins = Math.floor((Date.now()-water.lastDrink)/60000);
     if(mins>=60 && mins<65){
       if(document.hidden){
@@ -1403,15 +1486,40 @@ async function logExercise(){
   const entries = (await sGet(`exercise:${CURRENT_PROFILE}:${today}`)) || [];
   entries.push({type, minutes, time: Date.now()});
   await sSet(`exercise:${CURRENT_PROFILE}:${today}`, entries);
+  const cum = (await sGet(`exercise-cumulative:${CURRENT_PROFILE}`)) || {total:0};
+  cum.total += minutes;
+  await sSet(`exercise-cumulative:${CURRENT_PROFILE}`, cum);
   showToast('הפעילות נשמרה 💪');
+  await checkBadges();
   renderExercise();
 }
 async function deleteExercise(idx){
   const today = todayStr();
   const entries = (await sGet(`exercise:${CURRENT_PROFILE}:${today}`)) || [];
-  entries.splice(idx,1);
+  const removed = entries.splice(idx,1)[0];
   await sSet(`exercise:${CURRENT_PROFILE}:${today}`, entries);
+  if(removed){
+    const cum = (await sGet(`exercise-cumulative:${CURRENT_PROFILE}`)) || {total:0};
+    cum.total = Math.max(0, cum.total - removed.minutes);
+    await sSet(`exercise-cumulative:${CURRENT_PROFILE}`, cum);
+  }
   renderExercise();
+}
+async function updateExerciseStreakOnLoad(){
+  // בודק אם היה אתמול לפחות רישום פעילות אחד, ומעדכן רצף - פעם ביום, בדומה לרצף המים
+  const streakData = (await sGet(`exercise-streak:${CURRENT_PROFILE}`)) || {count:0, lastChecked:null};
+  const today = todayStr();
+  if(streakData.lastChecked === today) return;
+  const yesterday = todayStr(addDays(new Date(),-1));
+  const yEntries = await sGet(`exercise:${CURRENT_PROFILE}:${yesterday}`);
+  if(streakData.lastChecked === yesterday || streakData.lastChecked===null){
+    if(yEntries && yEntries.length) streakData.count = (streakData.count||0)+1;
+    else if(streakData.lastChecked!==null) streakData.count = 0;
+  } else {
+    streakData.count = 0;
+  }
+  streakData.lastChecked = today;
+  await sSet(`exercise-streak:${CURRENT_PROFILE}`, streakData);
 }
 
 /* ============================================================
@@ -1573,6 +1681,8 @@ async function checkBadges(){
   const cum = (await sGet(`water-cumulative:${CURRENT_PROFILE}`)) || {total:0};
   const log = (await sGet(`weight-log:${CURRENT_PROFILE}`)) || [];
   const streak = (await sGet(`water-streak:${CURRENT_PROFILE}`)) || {count:0};
+  const exCum = (await sGet(`exercise-cumulative:${CURRENT_PROFILE}`)) || {total:0};
+  const exStreak = (await sGet(`exercise-streak:${CURRENT_PROFILE}`)) || {count:0};
   const first = log.length?log[0].weight:null;
   const latest = log.length?log[log.length-1].weight:null;
   const lostSoFar = (first!=null && latest!=null) ? (first-latest) : 0;
@@ -1585,6 +1695,8 @@ async function checkBadges(){
     if(b.type==='waterstreak') achieved = streak.count >= b.threshold;
     if(b.type==='weight') achieved = lostSoFar >= b.threshold;
     if(b.type==='weightlog') achieved = log.length >= b.threshold;
+    if(b.type==='exercisetotal') achieved = exCum.total >= b.threshold;
+    if(b.type==='exercisestreak') achieved = exStreak.count >= b.threshold;
     if(achieved){
       earned.push({id:b.id, date: todayStr()});
       newlyEarned.push(b);
@@ -1592,7 +1704,37 @@ async function checkBadges(){
   }
   if(newlyEarned.length){
     await sSet(`badges:${CURRENT_PROFILE}`, earned);
-    newlyEarned.forEach(b=> showToast(`🏅 תג חדש: ${b.label}!`));
+    showBadgeCelebration(newlyEarned);
+  }
+}
+
+// תור התראות תגים - אם כמה תגים מתקבלים באותו רגע, מציגים אחד אחרי השני
+let _badgeCelebrationQueue = [];
+function showBadgeCelebration(badges){
+  if(!badges || !badges.length) return;
+  _badgeCelebrationQueue.push(...badges);
+  if(_badgeCelebrationQueue.length === badges.length){
+    showNextBadgeCelebration();
+  }
+}
+function showNextBadgeCelebration(){
+  const b = _badgeCelebrationQueue.shift();
+  if(!b) return;
+  openSheet(`
+    <button class="sheet-close" onclick="closeBadgeCelebration()">✕</button>
+    <div style="text-align:center;padding:16px 0 8px;">
+      <div class="badge-pop" style="font-size:70px;margin-bottom:6px;">${b.ic}</div>
+      <h3 style="margin-bottom:2px;">מזל טוב! 🎉</h3>
+      <div style="font-weight:800;font-size:19px;color:var(--primary-dark);margin:6px 0;">${b.label}</div>
+      <div class="muted" style="margin-bottom:22px;">${b.desc}</div>
+      <button class="btn block" onclick="closeBadgeCelebration()">יאללה! 🙌</button>
+    </div>
+  `);
+}
+function closeBadgeCelebration(){
+  closeSheet();
+  if(_badgeCelebrationQueue.length){
+    setTimeout(showNextBadgeCelebration, 350);
   }
 }
 
@@ -1615,6 +1757,7 @@ async function updateWaterStreakOnLoad(){
 
 async function renderBadges(){
   await updateWaterStreakOnLoad();
+  await updateExerciseStreakOnLoad();
   await checkBadges();
   const el = document.getElementById('tab-content');
   const earned = (await sGet(`badges:${CURRENT_PROFILE}`)) || [];
@@ -2168,6 +2311,10 @@ window.deleteExercise = deleteExercise;
 window.editWeightEntry = editWeightEntry;
 window.saveWeightEdit = saveWeightEdit;
 window.deleteWeightEntry = deleteWeightEntry;
+window.editWaterEntry = editWaterEntry;
+window.saveWaterEdit = saveWaterEdit;
+window.deleteWaterEntry = deleteWaterEntry;
+window.closeBadgeCelebration = closeBadgeCelebration;
 
 /* ============================================================
    INIT
