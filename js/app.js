@@ -599,6 +599,24 @@ const MEAL_DATA = {
 }
 };
 
+// ארוחות פרס - עד 2200 קלוריות, זמינות פעם אחת בשבוע במקום צהריים או ערב.
+// לא קשורות לרמת הקלוריות (1200/1500/1800) - מוצגות תמיד כאפשרות נוספת
+// בסוף רשימת האפשרויות לצהריים/ערב, מסומנות ב-reward:true.
+const REWARD_MEALS = [
+ {id:'rw1', name:'🎁 פיצה משפחתית עם סלט', calories:2200, ingredients:['4 פרוסות פיצה משפחתית','סלט ירוק קטן'], recipe:'להזמין או לחמם פיצה משפחתית, להגיש עם סלט ירוק קטן בצד.', reward:true},
+ {id:'rw2', name:'🎁 המבורגר גדול עם צ׳יפס', calories:2150, ingredients:['המבורגר גדול (200 גרם בשר)','צ׳יפס','סלט כרוב'], recipe:'לצלות המבורגר, להגיש עם צ׳יפס וסלט כרוב.', reward:true},
+ {id:'rw3', name:'🎁 פסטה אלפרדו עם עוף', calories:2100, ingredients:['300 גרם פסטה ברוטב אלפרדו','150 גרם חזה עוף'], recipe:'לבשל פסטה ברוטב אלפרדו עשיר, להוסיף פרוסות עוף צלוי.', reward:true},
+ {id:'rw4', name:'🎁 מגש סושי מפואר', calories:2000, ingredients:['30 יחידות סושי מגוון'], recipe:'להזמין או להכין מגש סושי גדול ומגוון.', reward:true},
+ {id:'rw5', name:'🎁 שווארמה מלאה בלאפה עם צ׳יפס', calories:2150, ingredients:['לאפה שווארמה מלאה','צ׳יפס','סלט וחומוס'], recipe:'למלא לאפה בשווארמה, סלט וחומוס, להגיש עם צ׳יפס.', reward:true},
+ {id:'rw6', name:'🎁 שניצל עם צ׳יפס ורוטב', calories:2100, ingredients:['שניצל גדול','צ׳יפס','רוטב לבחירה'], recipe:'לטגן שניצל גדול, להגיש עם צ׳יפס ורוטב אהוב.', reward:true},
+ {id:'rw7', name:'🎁 ארוחה סינית - אטריות ואורז מטוגן', calories:2050, ingredients:['אטריות עם עוף מטוגנות','אורז מטוגן','ביצה מטוגנת'], recipe:'להזמין או להכין אטריות עוף ואורז מטוגן.', reward:true},
+ {id:'rw8', name:'🎁 בוריטו בול ענק', calories:2200, ingredients:['בוריטו בול גדול: אורז, בשר, שעועית, גבינה וגוואקמולי'], recipe:'להרכיב בוריטו בול עם כל התוספות האהובות עליכן.', reward:true},
+ {id:'rw9', name:'🎁 צלעות בקר עם תוספות', calories:2200, ingredients:['300 גרם צלעות בקר','תירס','פירה'], recipe:'לצלות צלעות בקר ברוטב ברביקיו, להגיש עם תירס ופירה.', reward:true},
+ {id:'rw10', name:'🎁 פיש אנד צ׳יפס', calories:2100, ingredients:['פילה דג מטוגן בבלילה','צ׳יפס','רוטב טרטר'], recipe:'לטגן פילה דג בבלילה פריכה, להגיש עם צ׳יפס ורוטב טרטר.', reward:true},
+ {id:'rw11', name:'🎁 לזניה עם לחם שום', calories:2150, ingredients:['מנת לזניה גדולה','2 פרוסות לחם שום'], recipe:'לחמם מנת לזניה גדולה, להגיש עם לחם שום.', reward:true},
+ {id:'rw12', name:'🎁 ארוחת פנקייקים חגיגית', calories:2000, ingredients:['4 פנקייקים','סירופ מייפל','חמאה','2 ביצים','בייקון'], recipe:'להכין פנקייקים עם ביצים ובייקון בצד, ולהגיש עם סירופ מייפל וחמאה.', reward:true},
+];
+
 const BADGE_DEFS = [
  // מים - כמות מצטברת
  {id:'water_1', ic:'💦', label:'לגימה ראשונה', desc:'1 ליטר מים במצטבר', type:'water', threshold:1000},
@@ -992,7 +1010,26 @@ async function getCustomOptions(tier, slot){
 }
 async function allOptionsFor(tier, slot){
   const custom = await getCustomOptions(tier, slot);
-  return [...MEAL_DATA[tier][slot], ...custom];
+  const rewards = (slot==='lunch' || slot==='dinner') ? REWARD_MEALS : [];
+  return [...MEAL_DATA[tier][slot], ...custom, ...rewards];
+}
+
+/* ============================================================
+   ארוחת פרס - מגבלת פעם אחת בשבוע לכל פרופיל (לפי השבוע של התאריך
+   שעורכים - כדי שתכנון שבוע הבא מראש יעבוד נכון)
+============================================================ */
+async function getRewardUsage(profile, forDateStr){
+  const rec = await sGet(`reward-used:${profile}`);
+  if(!rec) return null;
+  const weekStart = todayStr(getWeekStart(new Date(forDateStr+'T00:00:00')));
+  return rec.weekStart === weekStart ? rec : null; // רשומה משבוע אחר לא נחשבת יותר
+}
+async function setRewardUsage(profile, dateStr, slotId){
+  const weekStart = todayStr(getWeekStart(new Date(dateStr+'T00:00:00')));
+  await sSet(`reward-used:${profile}`, {weekStart, date: dateStr, slot: slotId});
+}
+async function clearRewardUsage(profile){
+  await sSet(`reward-used:${profile}`, null);
 }
 
 /* ============================================================
@@ -1193,12 +1230,27 @@ async function renderMealList(){
     const selectedId = isShared ? (shared[slot.id] || allOpts[0].id) : (personalMenu[slot.id] || allOpts[0].id);
     const options = await filteredOptionsFor(tier, slot.id, isShared ? sharedExcludedUnion : myExcluded, selectedId);
     const selected = options.find(o=>o.id===selectedId) || options[0];
+    let rewardNote = '';
+    if(slot.id==='lunch' || slot.id==='dinner'){
+      const usage = await getRewardUsage(CURRENT_PROFILE, dateStr);
+      if(selected.reward){
+        rewardNote = `<div class="muted" style="font-size:11px;margin-top:4px;color:var(--accent);">🎁 זו ארוחת הפרס השבועית שלך</div>`;
+      } else if(usage){
+        const usedHere = usage.date===dateStr && usage.slot===slot.id;
+        if(!usedHere){
+          rewardNote = `<div class="muted" style="font-size:11px;margin-top:4px;">🎁 ארוחת הפרס השבועית שלך כבר נוצלה ב-${usage.date} (${usage.slot==='lunch'?'צהריים':'ערב'})</div>`;
+        }
+      } else {
+        rewardNote = `<div class="muted" style="font-size:11px;margin-top:4px;">🎁 ארוחת פרס שבועית זמינה - אפשר לבחור מהרשימה למטה</div>`;
+      }
+    }
     const row = document.createElement('div');
     row.className='meal-row';
     row.innerHTML = `
       <div class="top"><span class="slot-name">${slot.icon} ${slot.name}${isShared?' <span class="pill" style="font-size:10px;padding:2px 8px;">🔗 משותף</span>':''}</span><span class="cal">${selected.calories} קק"ל</span></div>
       <div class="meal-name">${selected.name}</div>
       <div class="ingredients">${selected.ingredients.join(' · ')}</div>
+      ${rewardNote}
       <select data-slot="${slot.id}">
         ${options.map(o=>`<option value="${o.id}" ${o.id===selected.id?'selected':''}>${o.name}${o.custom?' (מותאם אישית)':''}</option>`).join('')}
       </select>
@@ -1208,11 +1260,35 @@ async function renderMealList(){
       </div>
     `;
     row.querySelector('select').addEventListener('change', async (e)=>{
+      const newId = e.target.value;
+      const prevId = selected.id;
+      const isRewardSlot = (slot.id==='lunch' || slot.id==='dinner');
+      const newIsReward = isRewardSlot && REWARD_MEALS.some(r=>r.id===newId);
+      if(newIsReward){
+        const usage = await getRewardUsage(CURRENT_PROFILE, dateStr);
+        if(usage && (usage.date!==dateStr || usage.slot!==slot.id)){
+          const usedDayLabel = usage.date===dateStr ? '' : usage.date;
+          showToast(`כבר נעשה שימוש בארוחת הפרס השבועית ב-${usedDayLabel} (${usage.slot==='lunch'?'צהריים':'ערב'}). אפשר לבטל שם קודם.`);
+          e.target.value = prevId; // ביטול הבחירה - חוזרים לקודם
+          return;
+        }
+      }
       if(isShared){
-        await setSharedSelection(dateStr, slot.id, e.target.value);
+        await setSharedSelection(dateStr, slot.id, newId);
       } else {
-        personalMenu[slot.id] = e.target.value;
+        personalMenu[slot.id] = newId;
         await sSet(`menu:${CURRENT_PROFILE}:${dateStr}`, personalMenu);
+      }
+      if(isRewardSlot){
+        if(newIsReward){
+          await setRewardUsage(CURRENT_PROFILE, dateStr, slot.id);
+        } else {
+          // אם זזים משם - ואם זה בדיוק היום/הארוחה שהיו רשומים כארוחת הפרס - משחררים אותה
+          const usage = await getRewardUsage(CURRENT_PROFILE, dateStr);
+          if(usage && usage.date===dateStr && usage.slot===slot.id){
+            await clearRewardUsage(CURRENT_PROFILE);
+          }
+        }
       }
       renderMealList();
     });
